@@ -63,10 +63,8 @@ export const AppProvider = ({ children }) => {
   // Load initial data from Supabase
   const fetchAllData = async () => {
     try {
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      if (!supabaseUrl || !supabaseAnonKey) {
-        console.warn("Supabase credentials missing. Using local storage data.");
+      if (!supabase) {
+        console.warn("Supabase client is not initialized. Using local storage data.");
         return;
       }
 
@@ -161,8 +159,7 @@ export const AppProvider = ({ children }) => {
     setActivities(prev => [newActivity, ...prev.slice(0, 49)]);
 
     try {
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      if (supabaseUrl) {
+      if (supabase) {
         await supabase.from('activities').insert({
           user_name: userName,
           type,
@@ -194,8 +191,7 @@ export const AppProvider = ({ children }) => {
     }
 
     try {
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      if (supabaseUrl) {
+      if (supabase) {
         const { data, error } = await supabase
           .from('admins')
           .select('*')
@@ -250,8 +246,7 @@ export const AppProvider = ({ children }) => {
     }
 
     try {
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      if (supabaseUrl) {
+      if (supabase) {
         // Query to check existing
         const { data: existing } = await supabase
           .from('admins')
@@ -315,8 +310,7 @@ export const AppProvider = ({ children }) => {
     const joiningDateStr = userData.joiningDate || dayjs().format('YYYY-MM-DD');
 
     try {
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      if (supabaseUrl) {
+      if (supabase) {
         const { data, error } = await supabase
           .from('yuvaks')
           .insert({
@@ -370,8 +364,7 @@ export const AppProvider = ({ children }) => {
 
   const updateUser = async (updatedUser) => {
     try {
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      if (supabaseUrl) {
+      if (supabase) {
         const { error } = await supabase
           .from('yuvaks')
           .update({
@@ -403,8 +396,7 @@ export const AppProvider = ({ children }) => {
     if (!targetUser) return;
 
     try {
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      if (supabaseUrl) {
+      if (supabase) {
         const { error } = await supabase
           .from('yuvaks')
           .delete()
@@ -431,8 +423,7 @@ export const AppProvider = ({ children }) => {
   // Attendance Marking
   const saveAttendance = async (dateStr, recordMap) => {
     try {
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      if (supabaseUrl) {
+      if (supabase) {
         // Delete existing records on that date
         const { error: deleteError } = await supabase
           .from('attendance')
