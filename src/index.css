@@ -1,0 +1,86 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Outfit', 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  
+  --color-brand-orange-50: #FFF7ED;
+  --color-brand-orange-100: #FFEDD5;
+  --color-brand-orange-200: #FED7AA;
+  --color-brand-orange-300: #FDBA74;
+  --color-brand-orange-400: #FB923C;
+  --color-brand-orange-500: #F97316;
+  --color-brand-orange-600: #EA580C;
+  
+  --color-brand-blue-50: #EFF6FF;
+  --color-brand-blue-100: #DBEAFE;
+  --color-brand-blue-200: #BFDBFE;
+  --color-brand-blue-300: #93C5FD;
+  --color-brand-blue-400: #60A5FA;
+  --color-brand-blue-500: #3B82F6;
+  --color-brand-blue-600: #2563EB;
+}
+
+/* Base custom styles to give the app a premium, smooth, polished look */
+@media (min-width: 1024px) {
+  html {
+    font-size: 112.5%; /* Zoom/scale up default text sizing proportionally on laptops */
+  }
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: #F8FAFC;
+  color: #0F172A;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom scrollbars for a modern SaaS appearance */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #E2E8F0;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #CBD5E1;
+}
+
+/* Micro-animations and transitions */
+.page-enter {
+  animation: fadeIn 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Glassmorphism utility */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(226, 232, 240, 0.6);
+}
+
+/* Custom calendar style tweaks */
+.heatmap-cell {
+  aspect-ratio: 1;
+  transition: all 0.2s ease-in-out;
+}
+.heatmap-cell:hover {
+  transform: scale(1.15);
+  z-index: 10;
+}
