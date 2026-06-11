@@ -39,16 +39,18 @@ export const Login = () => {
     setIsLoading(true);
     setErrorMessage('');
     
-    // Simulate minor network latency for authentic UI feel
-    setTimeout(() => {
-      const result = login(data.email, data.password);
+    try {
+      const result = await login(data.email, data.password);
       setIsLoading(false);
       if (result.success) {
         navigateTo('dashboard');
       } else {
         setErrorMessage(result.message);
       }
-    }, 800);
+    } catch (err) {
+      setIsLoading(false);
+      setErrorMessage('An unexpected database connection error occurred. Please try again.');
+    }
   };
 
   const onSignupSubmit = async (data) => {
@@ -59,8 +61,8 @@ export const Login = () => {
     setIsLoading(true);
     setErrorMessage('');
 
-    setTimeout(() => {
-      const result = registerAdmin({
+    try {
+      const result = await registerAdmin({
         firstName: data.firstName,
         lastName: data.lastName,
         email: data.email,
@@ -74,7 +76,10 @@ export const Login = () => {
       } else {
         setErrorMessage(result.message);
       }
-    }, 800);
+    } catch (err) {
+      setIsLoading(false);
+      setErrorMessage('An unexpected registration database error occurred. Please try again.');
+    }
   };
 
   const handleToggleRegister = () => {
