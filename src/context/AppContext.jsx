@@ -60,7 +60,7 @@ export const AppProvider = ({ children }) => {
     }
   }, [currentUser]);
 
-  // Load initial data from Supabase
+  // Load initial data from Supabase and migrate local storage data if cloud database is empty
   const fetchAllData = async () => {
     try {
       if (!supabase) {
@@ -70,11 +70,36 @@ export const AppProvider = ({ children }) => {
 
       setLoading(true);
 
-      // 1. Fetch admins
-      const { data: adminsData, error: adminsErr } = await supabase
+      // Fetch local storage fallback data
+      const savedLocalUsers = localStorage.getItem('smym_users');
+      const localUsers = savedLocalUsers ? JSON.parse(savedLocalUsers) : [];
+      const savedLocalAdmins = localStorage.getItem('smym_admins');
+      const localAdmins = savedLocalAdmins ? JSON.parse(savedLocalAdmins) : [];
+
+      // 1. Load / Migrate Admins
+      let { data: adminsData, error: adminsErr } = await supabase
         .from('admins')
         .select('*');
+
       if (!adminsErr && adminsData) {
+        if (adminsData.length === 0 && localAdmins.length > 0) {
+          console.log("Migrating local admins to Supabase...");
+          const insertAdmins = localAdmins.map(a => ({
+            email: a.email.toLowerCase(),
+            password: a.password,
+            first_name: a.firstName,
+            last_name: a.lastName
+          }));
+          const { data: migratedAdmins, error: migrateAdminsErr } = await supabase
+            .from('admins')
+            .insert(insertAdmins)
+            .select();
+          
+          if (!migrateAdminsErr && migratedAdmins) {
+            adminsData = migratedAdmins;
+          }
+        }
+
         setAdmins(adminsData.map(a => ({
           id: a.id,
           email: a.email,
@@ -84,11 +109,83 @@ export const AppProvider = ({ children }) => {
         })));
       }
 
-      // 2. Fetch yuvaks (users)
-      const { data: yuvaksData, error: yuvaksErr } = await supabase
+      // 2. Load / Migrate Yuvaks (users)
+      let { data: yuvaksData, error: yuvaksErr } = await supabase
         .from('yuvaks')
         .select('*');
+
       if (!yuvaksErr && yuvaksData) {
+        if (yuvaksData.length === 0 && localUsers.length > 0) {
+          console.log("Migrating local storage yuvaks to Supabase...");
+          const insertYuvaks = localUsers.map(y => ({
+            name: y.name,
+            photo: y.photo || '',
+            dob: y.dob || null,
+            mobile: y.mobile || '',
+            address: y.address || '',
+            email: y.email || '',
+            gender: y.gender || 'Male',
+            joining_date: y.joiningDate || dayjs().format('YYYY-MM-DD'),
+            status: y.status || 'active',
+            notes: y.notes || ''
+          }));
+
+          const { data: migratedYuvaks, error: migrateYuvaksErr } = await supabase
+            .from('yuvaks')
+            .insert(insertYuvaks)
+            .select();
+
+          if (!migrateYuvaksErr && migratedYuvaks) {
+            yuvaksData = migratedYuvaks;
+
+            // Map old local IDs to new Supabase UUIDs
+            const idMap = {};
+            localUsers.forEach(localUser => {
+              const matchedCloud = migratedYuvaks.find(c => c.name === localUser.name && c.mobile === localUser.mobile);
+              if (matchedCloud) {
+                idMap[localUser.id] = matchedCloud.id;
+              }
+            });
+
+            // Migrate Attendance Records
+            const savedLocalAttendance = localStorage.getItem('smym_attendance');
+            const localAttendance = savedLocalAttendance ? JSON.parse(savedLocalAttendance) : {};
+            const attendanceRows = [];
+
+            Object.keys(localAttendance).forEach(date => {
+              Object.keys(localAttendance[date]).forEach(oldUserId => {
+                const newUserId = idMap[oldUserId];
+                if (newUserId) {
+                  attendanceRows.push({
+                    date,
+                    yuvak_id: newUserId,
+                    status: localAttendance[date][oldUserId]
+                  });
+                }
+              });
+            });
+
+            if (attendanceRows.length > 0) {
+              await supabase.from('attendance').insert(attendanceRows);
+              console.log("Attendance records migrated to Supabase successfully!");
+            }
+
+            // Migrate Activities
+            const savedLocalActivities = localStorage.getItem('smym_activities');
+            const localActivities = savedLocalActivities ? JSON.parse(savedLocalActivities) : [];
+            const activityRows = localActivities.map(act => ({
+              user_name: act.user,
+              type: act.type,
+              message: act.message,
+              created_at: dayjs(act.timestamp).toISOString()
+            }));
+
+            if (activityRows.length > 0) {
+              await supabase.from('activities').insert(activityRows);
+            }
+          }
+        }
+
         setUsers(yuvaksData.map(y => ({
           id: y.id,
           name: y.name,
