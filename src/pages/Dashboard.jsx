@@ -1,21 +1,23 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { useNavigation } from '../context/NavigationContext';
 import DashboardLayout from '../layouts/DashboardLayout';
 import Card from '../components/Card';
 import Avatar from '../components/Avatar';
-import Badge from '../components/Badge';
-import { 
-  Users, 
-  Percent, 
-  CalendarCheck, 
-  UserCheck, 
-  PlusCircle, 
-  Clipboard, 
-  FileSpreadsheet, 
-  Download,
-  Calendar,
-  ChevronRight
+import {
+  Users,
+  Percent,
+  Award,
+  AlertTriangle,
+  UserPlus,
+  ClipboardCheck,
+  FileSpreadsheet,
+  TrendingUp,
+  PieChart as PieIcon,
+  BarChart3,
+  ChevronRight,
+  Activity,
+  Trophy
 } from 'lucide-react';
 import {
   LineChart,
@@ -30,450 +32,411 @@ import {
   Cell,
   BarChart,
   Bar,
-  AreaChart,
-  Area,
   Legend
 } from 'recharts';
 import dayjs from 'dayjs';
 
+// Animated Counter component
+const AnimatedCounter = ({ value, suffix = '' }) => {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    let start = 0;
+    const end = parseInt(value) || 0;
+    if (end === 0) {
+      setCount(0);
+      return;
+    }
+    const duration = 600;
+    const steps = 30;
+    const stepTime = duration / steps;
+    const increment = Math.ceil(end / steps);
+
+    const timer = setInterval(() => {
+      start += increment;
+      if (start >= end) {
+        setCount(end);
+        clearInterval(timer);
+      } else {
+        setCount(start);
+      }
+    }, stepTime);
+    return () => clearInterval(timer);
+  }, [value]);
+
+  return <span>{count}{suffix}</span>;
+};
+
 export const Dashboard = () => {
-  const { stats, users, activities, attendance } = useApp();
+  const { stats, users, attendance, activities } = useApp();
   const { navigateTo } = useNavigation();
 
-  // 1. Compile Mini-Trend sparklines data dynamically based on actual stats
-  const totalUsersTrend = useMemo(() => {
-    return [
-      { value: Math.max(0, users.length - 3) },
-      { value: Math.max(0, users.length - 2) },
-      { value: Math.max(0, users.length - 1) },
-      { value: users.length }
-    ];
-  }, [users.length]);
-
-  const perfectAttendanceTrend = useMemo(() => {
-    return [
-      { value: Math.max(0, stats.perfectAttendance - 2) },
-      { value: Math.max(0, stats.perfectAttendance - 1) },
-      { value: stats.perfectAttendance }
-    ];
-  }, [stats.perfectAttendance]);
-
-  const overallTrend = useMemo(() => {
-    return [
-      { value: Math.max(0, stats.overallAttendance - 5) },
-      { value: Math.max(0, stats.overallAttendance - 2) },
-      { value: stats.overallAttendance }
-    ];
-  }, [stats.overallAttendance]);
-
-  const todayTrend = useMemo(() => {
-    const val = stats.todayAttendance || 0;
-    return [
-      { value: Math.max(0, val - 5) },
-      { value: Math.max(0, val - 2) },
-      { value: val }
-    ];
-  }, [stats.todayAttendance]);
-
+  // 1. Line Chart Data: Attendance Trend (Last 7 marked assemblies)
   const lineChartData = useMemo(() => {
     const dates = Object.keys(attendance).sort((a, b) => dayjs(a).diff(dayjs(b))).slice(-7);
     return dates.map(date => {
-      const dayRecord = attendance[date];
+      const records = attendance[date];
       let present = 0;
       let total = 0;
-      
-      Object.keys(dayRecord).forEach(uId => {
-        const user = users.find(u => u.id === uId);
-        if (user && user.status === 'active') {
-          total++;
-          if (dayRecord[uId] === 'present') present++;
-        }
+      Object.keys(records).forEach(uId => {
+        total++;
+        if (records[uId] === 'Present') present++;
       });
-
-      const rate = total > 0 ? Math.round((present / total) * 100) : 0;
       return {
         name: dayjs(date).format('MMM DD'),
-        Rate: rate
+        Attendance: total > 0 ? Math.round((present / total) * 100) : 0
       };
     });
-  }, [attendance, users]);
+  }, [attendance]);
 
-  // 3. Generate Chart Data: Distribution (Pie Chart of all recorded statuses)
+  // 2. Pie Chart Data: Present vs Absent
   const pieChartData = useMemo(() => {
     let presentCount = 0;
     let absentCount = 0;
-    let leaveCount = 0;
-
     Object.keys(attendance).forEach(date => {
       Object.keys(attendance[date]).forEach(uId => {
-        const user = users.find(u => u.id === uId);
-        if (user && user.status === 'active') {
-          const status = attendance[date][uId];
-          if (status === 'present') presentCount++;
-          if (status === 'absent') absentCount++;
-          if (status === 'leave') leaveCount++;
+        if (attendance[date][uId] === 'Present') presentCount++;
+        else if (attendance[date][uId] === 'Absent') absentCount++;
+      });
+    });
+
+    const total = presentCount + absentCount;
+    if (total === 0) {
+      return [
+        { name: 'Present', value: 0, color: '#34D399' },
+        { name: 'Absent', value: 0, color: '#F87171' }
+      ];
+    }
+    return [
+      { name: 'Present', value: presentCount, color: '#34D399' },
+      { name: 'Absent', value: absentCount, color: '#F87171' }
+    ];
+  }, [attendance]);
+
+  // 3. Bar Chart Data: Monthly Comparison
+  const barChartData = useMemo(() => {
+    const monthlySummary = {};
+    Object.keys(attendance).forEach(date => {
+      const monthName = dayjs(date).format('MMM YYYY');
+      if (!monthlySummary[monthName]) {
+        monthlySummary[monthName] = { present: 0, total: 0 };
+      }
+      Object.keys(attendance[date]).forEach(uId => {
+        monthlySummary[monthName].total++;
+        if (attendance[date][uId] === 'Present') {
+          monthlySummary[monthName].present++;
         }
       });
     });
 
-    const total = presentCount + absentCount + leaveCount;
-    if (total === 0) return [
-      { name: 'Present', value: 0, color: '#86EFAC', labelColor: 'text-green-700' },
-      { name: 'Absent', value: 0, color: '#FCA5A5', labelColor: 'text-red-700' },
-      { name: 'Leave', value: 0, color: '#FDE68A', labelColor: 'text-yellow-700' }
-    ];
+    // Format and sort chronologically
+    return Object.keys(monthlySummary).map(month => ({
+      name: month,
+      Rate: monthlySummary[month].total > 0
+        ? Math.round((monthlySummary[month].present / monthlySummary[month].total) * 100)
+        : 0
+    })).sort((a, b) => dayjs(a.name, 'MMM YYYY').diff(dayjs(b.name, 'MMM YYYY')));
+  }, [attendance]);
 
-    return [
-      { name: 'Present', value: presentCount, color: '#86EFAC', labelColor: 'text-green-700' },
-      { name: 'Absent', value: absentCount, color: '#FCA5A5', labelColor: 'text-red-700' },
-      { name: 'Leave', value: leaveCount, color: '#FDE68A', labelColor: 'text-yellow-700' }
-    ];
-  }, [attendance, users]);
+  // 4. Performance Tables calculations
+  const performanceTables = useMemo(() => {
+    const activeYuvaks = users; // already has attendancePct computed
 
-  // 4. Generate Chart Data: Performance Distribution (Bar Chart of Yuvak ranges)
-  const barChartData = useMemo(() => {
-    let perfect = 0;
-    let range75_99 = 0;
-    let range50_74 = 0;
-    let below50 = 0;
+    // Top 5 Attendance (Highest percentage)
+    const top5 = [...activeYuvaks]
+      .sort((a, b) => b.attendancePct - a.attendancePct)
+      .slice(0, 5);
 
-    users.filter(u => u.status === 'active').forEach(u => {
-      const pct = u.attendancePct;
-      if (pct === 100) perfect++;
-      else if (pct >= 75) range75_99++;
-      else if (pct >= 50) range50_74++;
-      else below50++;
-    });
+    // Below 50% Attendance
+    const below50 = activeYuvaks.filter(y => y.attendancePct < 50);
 
-    return [
-      { name: 'Perfect (100%)', count: perfect, fill: '#86EFAC' },
-      { name: '75% - 99%', count: range75_99, fill: '#93C5FD' },
-      { name: '50% - 74%', count: range50_74, fill: '#FDE68A' },
-      { name: 'Below 50%', count: below50, fill: '#FCA5A5' }
-    ];
+    // Perfect Attendance (100%)
+    const perfect = activeYuvaks.filter(y => y.attendancePct === 100);
+
+    return { top5, below50, perfect };
   }, [users]);
 
-  // Quick action mock triggers
-  const handleGenerateReport = () => {
-    alert("Simulated Action: Monthly Attendance Report generated for June 2026. Downloading in background...");
-  };
-
-  const handleExportData = () => {
-    alert("Simulated Action: Exporting complete database to XLSX/CSV format...");
-  };
-
   return (
-    <DashboardLayout title="Dashboard Overview">
-      
-      {/* 1. Statistics / KPI Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
-        
-        {/* KPI Card 1: Total Registered */}
-        <Card padded={false} className="p-5 relative flex flex-col justify-between">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Registered Users</p>
-              <h3 className="text-2xl font-extrabold text-slate-800 mt-1">{stats.totalUsers}</h3>
-            </div>
-            <div className="p-2.5 bg-brand-orange-50 rounded-xl border border-brand-orange-100 text-brand-orange-600">
-              <Users className="h-5 w-5" />
-            </div>
-          </div>
-          <div className="flex items-center justify-between mt-4">
-            <span className="text-[10px] text-green-600 font-semibold bg-green-50 px-1.5 py-0.5 rounded">
-              +3 new this week
-            </span>
-            <div className="h-10 w-24">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={totalUsersTrend}>
-                  <Area type="monotone" dataKey="value" stroke="#F97316" fill="#FFF7ED" strokeWidth={1.5} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        </Card>
+    <DashboardLayout title="Dashboard">
 
-        {/* KPI Card 2: Overall Attendance */}
-        <Card padded={false} className="p-5 relative flex flex-col justify-between">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Overall Attendance %</p>
-              <h3 className="text-2xl font-extrabold text-slate-800 mt-1">{stats.overallAttendance}%</h3>
-            </div>
-            <div className="p-2.5 bg-brand-blue-50 rounded-xl border border-brand-blue-100 text-brand-blue-600">
-              <Percent className="h-5 w-5" />
-            </div>
-          </div>
-          <div className="flex items-center justify-between mt-4">
-            <span className="text-[10px] text-green-600 font-semibold bg-green-50 px-1.5 py-0.5 rounded">
-              {stats.overallAttendance > 0 ? `Active performance` : `No records yet`}
-            </span>
-            <div className="h-10 w-24">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={overallTrend}>
-                  <Area type="monotone" dataKey="value" stroke="#3B82F6" fill="#EFF6FF" strokeWidth={1.5} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        </Card>
-
-        {/* KPI Card 3: Perfect Attendance Count */}
-        <Card padded={false} className="p-5 relative flex flex-col justify-between">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Weekly Perfect Attendance</p>
-              <h3 className="text-2xl font-extrabold text-slate-800 mt-1">{stats.perfectAttendance}</h3>
-            </div>
-            <div className="p-2.5 bg-green-50 rounded-xl border border-green-100 text-green-600">
-              <CalendarCheck className="h-5 w-5" />
-            </div>
-          </div>
-          <div className="flex items-center justify-between mt-4">
-            <span className="text-[10px] text-green-600 font-semibold bg-green-50 px-1.5 py-0.5 rounded">
-              {users.length > 0 ? `${Math.round((stats.perfectAttendance / Math.max(1, users.filter(u => u.status === 'active').length)) * 100)}% of active youth` : 'No active youth'}
-            </span>
-            <div className="h-10 w-24">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={perfectAttendanceTrend}>
-                  <Area type="monotone" dataKey="value" stroke="#22C55E" fill="#F0FDF4" strokeWidth={1.5} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        </Card>
-
-        {/* KPI Card 4: Today's Attendance % */}
-        <Card padded={false} className="p-5 relative flex flex-col justify-between">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Today's Attendance %</p>
-              <h3 className="text-2xl font-extrabold text-slate-800 mt-1">
-                {stats.todayAttendance !== null ? `${stats.todayAttendance}%` : 'Not Marked'}
-              </h3>
-            </div>
-            <div className="p-2.5 bg-yellow-50 rounded-xl border border-yellow-100 text-yellow-600">
-              <UserCheck className="h-5 w-5" />
-            </div>
-          </div>
-          <div className="flex items-center justify-between mt-4">
-            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${stats.todayAttendance !== null ? 'text-green-600 bg-green-50' : 'text-slate-500 bg-slate-100'}`}>
-              {stats.todayAttendance !== null ? 'Marked successfully' : 'Mark attendance now'}
-            </span>
-            <div className="h-10 w-24">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={todayTrend}>
-                  <Area type="monotone" dataKey="value" stroke="#EAB308" fill="#FEFCE8" strokeWidth={1.5} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        </Card>
+      {/* Mobile Page Title */}
+      <div className="md:hidden mb-6">
+        <h1 className="text-2xl font-bold text-[#2C1F16] font-serif leading-tight">Dashboard</h1>
+        <p className="text-[#8C8276] text-xs mt-1 font-medium">Overview of Mandal attendance & activities</p>
       </div>
 
-      {/* 2. Quick Actions Panel */}
+      {/* 1. Summary Cards (Top Row - 4 boxes matching the card design) */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+
+        {/* Total Yuvaks */}
+        <div className="bg-white p-4 sm:p-5 rounded-3xl border border-slate-100 shadow-[0_8px_30px_rgba(0,0,0,0.03)] flex justify-between items-start">
+          <div className="flex flex-col min-w-0">
+            <span className="text-[10px] sm:text-[11px] font-bold text-[#8C8276] uppercase tracking-wider leading-tight block">
+              TOTAL<br />YUVAKS
+            </span>
+            <span className="text-2xl sm:text-3xl font-extrabold text-slate-800 font-serif mt-3 block">
+              <AnimatedCounter value={stats.totalUsers} />
+            </span>
+          </div>
+          <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-full bg-[#FFF2EB] text-[#FF7A3C] flex items-center justify-center flex-shrink-0">
+            <Users className="h-5 w-5 sm:h-5.5 sm:w-5.5 stroke-[2.2]" />
+          </div>
+        </div>
+
+        {/* Overall Attendance */}
+        <div className="bg-white p-4 sm:p-5 rounded-3xl border border-slate-100 shadow-[0_8px_30px_rgba(0,0,0,0.03)] flex justify-between items-start">
+          <div className="flex flex-col min-w-0">
+            <span className="text-[10px] sm:text-[11px] font-bold text-[#8C8276] uppercase tracking-wider leading-tight block">
+              OVERALL<br />ATTENDANCE
+            </span>
+            <span className="text-2xl sm:text-3xl font-extrabold text-slate-800 font-serif mt-3 block">
+              <AnimatedCounter value={stats.overallAttendance} suffix="%" />
+            </span>
+          </div>
+          <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-full bg-[#EAF7F1] text-[#059669] flex items-center justify-center flex-shrink-0">
+            <Activity className="h-5 w-5 sm:h-5.5 sm:w-5.5 stroke-[2.2]" />
+          </div>
+        </div>
+
+        {/* Perfect Attendance */}
+        <div className="bg-white p-4 sm:p-5 rounded-3xl border border-slate-100 shadow-[0_8px_30px_rgba(0,0,0,0.03)] flex justify-between items-start">
+          <div className="flex flex-col min-w-0">
+            <span className="text-[10px] sm:text-[11px] font-bold text-[#8C8276] uppercase tracking-wider leading-tight block">
+              PERFECT<br />ATTENDANCE
+            </span>
+            <span className="text-2xl sm:text-3xl font-extrabold text-slate-800 font-serif mt-3 block">
+              <AnimatedCounter value={stats.perfectAttendance} />
+            </span>
+          </div>
+          <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-full bg-[#FEF6E9] text-[#D97706] flex items-center justify-center flex-shrink-0">
+            <Trophy className="h-5 w-5 sm:h-5.5 sm:w-5.5 stroke-[2.2]" />
+          </div>
+        </div>
+
+        {/* 3-Day Absent Alerts */}
+        <div className="bg-white p-4 sm:p-5 rounded-3xl border border-slate-100 shadow-[0_8px_30px_rgba(0,0,0,0.03)] flex justify-between items-start">
+          <div className="flex flex-col min-w-0">
+            <span className="text-[10px] sm:text-[11px] font-bold text-[#8C8276] uppercase tracking-wider leading-tight block">
+              3-DAY<br />ABSENT<br />ALERT
+            </span>
+            <span className="text-2xl sm:text-3xl font-extrabold text-slate-800 font-serif mt-3 block">
+              <AnimatedCounter value={stats.absentAlerts} />
+            </span>
+          </div>
+          <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-full bg-[#FFF0F0] text-[#E11D48] flex items-center justify-center flex-shrink-0">
+            <AlertTriangle className="h-5 w-5 sm:h-5.5 sm:w-5.5 stroke-[2.2]" />
+          </div>
+        </div>
+
+      </div>
+
+      {/* 2. Quick Action Section */}
       <div className="mb-8">
-        <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-4">Quick Management Actions</h3>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          
-          <button 
+        <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">Quick Navigation</h4>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+
+          <button
             onClick={() => navigateTo('register')}
-            className="flex items-center p-4 bg-white hover:bg-brand-orange-50/20 border border-slate-100 hover:border-brand-orange-200 rounded-2xl shadow-sm text-left group transition-all duration-300 cursor-pointer"
+            className="flex items-center p-4.5 bg-white border border-slate-100 rounded-2xl shadow-sm hover:border-brand-orange-300 hover:bg-orange-50/20 group transition-all duration-300 cursor-pointer text-left"
           >
-            <div className="p-2 bg-brand-orange-50 rounded-xl border border-brand-orange-100 text-brand-orange-600 group-hover:scale-110 transition-transform">
-              <PlusCircle className="h-5 w-5" />
+            <div className="p-2.5 bg-orange-50 text-brand-orange-500 rounded-xl group-hover:scale-115 transition-transform duration-300">
+              <UserPlus className="h-5 w-5" />
             </div>
-            <div className="ml-3.5 min-w-0">
-              <h4 className="text-xs font-bold text-slate-800">Register Yuvak</h4>
-              <p className="text-[10px] text-slate-400 mt-0.5 truncate">Add personal information</p>
+            <div className="ml-4">
+              <h4 className="text-sm font-bold text-slate-800">Yuvak Registration</h4>
+              <p className="text-[10px] text-slate-400 mt-0.5">Register new youth members</p>
             </div>
           </button>
 
-          <button 
+          <button
             onClick={() => navigateTo('mark')}
-            className="flex items-center p-4 bg-white hover:bg-brand-blue-50/20 border border-slate-100 hover:border-brand-blue-200 rounded-2xl shadow-sm text-left group transition-all duration-300 cursor-pointer"
+            className="flex items-center p-4.5 bg-white border border-slate-100 rounded-2xl shadow-sm hover:border-emerald-300 hover:bg-emerald-50/10 group transition-all duration-300 cursor-pointer text-left"
           >
-            <div className="p-2 bg-brand-blue-50 rounded-xl border border-brand-blue-100 text-brand-blue-600 group-hover:scale-110 transition-transform">
-              <Clipboard className="h-5 w-5" />
+            <div className="p-2.5 bg-emerald-50 text-emerald-500 rounded-xl group-hover:scale-115 transition-transform duration-300">
+              <ClipboardCheck className="h-5 w-5" />
             </div>
-            <div className="ml-3.5 min-w-0">
-              <h4 className="text-xs font-bold text-slate-800">Mark Attendance</h4>
-              <p className="text-[10px] text-slate-400 mt-0.5 truncate">Open marking dashboard</p>
+            <div className="ml-4">
+              <h4 className="text-sm font-bold text-slate-800">Mark Attendance</h4>
+              <p className="text-[10px] text-slate-400 mt-0.5">Log today's assembly records</p>
             </div>
           </button>
 
-          <button 
+          <button
             onClick={() => navigateTo('report')}
-            className="flex items-center p-4 bg-white hover:bg-green-50/20 border border-slate-100 hover:border-green-200 rounded-2xl shadow-sm text-left group transition-all duration-300 cursor-pointer"
+            className="flex items-center p-4.5 bg-white border border-slate-100 rounded-2xl shadow-sm hover:border-blue-300 hover:bg-blue-50/10 group transition-all duration-300 cursor-pointer text-left"
           >
-            <div className="p-2 bg-green-50 rounded-xl border border-green-100 text-green-600 group-hover:scale-110 transition-transform">
+            <div className="p-2.5 bg-blue-50 text-blue-500 rounded-xl group-hover:scale-115 transition-transform duration-300">
               <FileSpreadsheet className="h-5 w-5" />
             </div>
-            <div className="ml-3.5 min-w-0">
-              <h4 className="text-xs font-bold text-slate-800">Monthly Report</h4>
-              <p className="text-[10px] text-slate-400 mt-0.5 truncate">Process and review files</p>
-            </div>
-          </button>
-
-          <button 
-            onClick={handleExportData}
-            className="flex items-center p-4 bg-white hover:bg-slate-50 border border-slate-100 hover:border-slate-300 rounded-2xl shadow-sm text-left group transition-all duration-300 cursor-pointer"
-          >
-            <div className="p-2 bg-slate-100 rounded-xl border border-slate-200 text-slate-600 group-hover:scale-110 transition-transform">
-              <Download className="h-5 w-5" />
-            </div>
-            <div className="ml-3.5 min-w-0">
-              <h4 className="text-xs font-bold text-slate-800">Export All Data</h4>
-              <p className="text-[10px] text-slate-400 mt-0.5 truncate">Excel, CSV, or PDF formats</p>
+            <div className="ml-4">
+              <h4 className="text-sm font-bold text-slate-800">Monthly Report</h4>
+              <p className="text-[10px] text-slate-400 mt-0.5">Export logs & view stats</p>
             </div>
           </button>
 
         </div>
       </div>
 
-      {/* 3. Analytics Charts Grid */}
+      {/* 3. Analytics Section */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-        
-        {/* Chart 1: Line Chart - Attendance Trend */}
-        <Card title="Attendance Performance Trend" subtitle="Percentage of active youth attending over the last 7 assemblies" className="lg:col-span-2">
-          <div className="h-72 mt-4">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={lineChartData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="colorRate" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#F97316" stopOpacity={0.2}/>
-                    <stop offset="95%" stopColor="#F97316" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
-                <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#64748B' }} axisLine={false} tickLine={false} />
-                <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: '#64748B' }} axisLine={false} tickLine={false} />
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: 'rgba(255, 255, 255, 0.95)', 
-                    border: '1px solid #E2E8F0', 
-                    borderRadius: '12px',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
-                    fontSize: '12px'
-                  }} 
-                />
-                <Line type="monotone" dataKey="Rate" stroke="#F97316" strokeWidth={3} activeDot={{ r: 6 }} dot={{ r: 3, strokeWidth: 2 }} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </Card>
 
-        {/* Chart 2: Pie Chart - Attendance Status Distribution */}
-        <Card title="Marked Distribution" subtitle="Proportion of Present, Absent, and Leave tallies">
-          <div className="h-56 mt-4 flex items-center justify-center relative">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={pieChartData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={55}
-                  outerRadius={75}
-                  paddingAngle={4}
-                  dataKey="value"
-                >
-                  {pieChartData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip formatter={(value) => [`${value} marks`, 'Count']} />
-              </PieChart>
-            </ResponsiveContainer>
-            
-            {/* Embedded center text */}
-            <div className="absolute text-center flex flex-col justify-center items-center pointer-events-none">
-              <span className="text-xl font-extrabold text-slate-800">{stats.overallAttendance}%</span>
-              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Avg Attend</span>
-            </div>
+        {/* Attendance Trend (Line Chart) */}
+        <div className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm lg:col-span-2">
+          <div className="flex items-center space-x-2 pb-4 border-b border-slate-50 mb-4">
+            <TrendingUp className="h-4.5 w-4.5 text-brand-orange-500" />
+            <h4 className="text-base font-bold text-[#2C1F16] font-serif tracking-tight">Attendance Trend</h4>
           </div>
+          <div className="h-64">
+            {lineChartData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={lineChartData} margin={{ left: -25, right: 10, top: 10, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
+                  <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#94A3B8' }} tickLine={false} axisLine={false} />
+                  <YAxis domain={[0, 100]} tick={{ fontSize: 10, fill: '#94A3B8' }} tickLine={false} axisLine={false} />
+                  <Tooltip contentStyle={{ fontSize: 12, borderRadius: 12, border: '1px solid #E2E8F0' }} />
+                  <Line type="monotone" dataKey="Attendance" stroke="#FFA94D" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-full flex items-center justify-center text-xs text-slate-400 uppercase font-semibold">No trend logs registered</div>
+            )}
+          </div>
+        </div>
 
-          {/* Custom Legends */}
-          <div className="flex justify-center gap-6 mt-4 border-t border-slate-50 pt-4">
-            {pieChartData.map((d, index) => (
-              <div key={d.name} className="flex flex-col items-center">
-                <span className={`text-xs font-bold ${d.labelColor} flex items-center`}>
-                  <span className="w-2.5 h-2.5 rounded-full mr-1.5" style={{ backgroundColor: d.color }} />
-                  {d.name}
-                </span>
-                <span className="text-[11px] text-slate-400 font-medium mt-0.5">{d.value} logged</span>
+        {/* Present vs Absent (Pie Chart) */}
+        <div className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm">
+          <div className="flex items-center space-x-2 pb-4 border-b border-slate-50 mb-4">
+            <PieIcon className="h-4.5 w-4.5 text-brand-orange-500" />
+            <h4 className="text-base font-bold text-[#2C1F16] font-serif tracking-tight">Present vs Absent</h4>
+          </div>
+          <div className="h-48 flex items-center justify-center relative">
+            {pieChartData.some(d => d.value > 0) ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={pieChartData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={45}
+                    outerRadius={65}
+                    paddingAngle={3}
+                    dataKey="value"
+                  >
+                    {pieChartData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(value) => [`${value} marks`]} />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="text-xs text-slate-400 uppercase font-semibold">No markings logged</div>
+            )}
+
+            {pieChartData.some(d => d.value > 0) && (
+              <div className="absolute text-center flex flex-col justify-center items-center pointer-events-none">
+                <span className="text-lg font-extrabold text-slate-800">{stats.overallAttendance}%</span>
+                <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wider">Present</span>
+              </div>
+            )}
+          </div>
+          <div className="flex justify-center space-x-6 border-t border-slate-50 pt-4 mt-2">
+            {pieChartData.map(d => (
+              <div key={d.name} className="flex items-center space-x-2 text-xs font-bold text-slate-600">
+                <span className="h-3 w-3 rounded-full" style={{ backgroundColor: d.color }} />
+                <span>{d.name}: {d.value}</span>
               </div>
             ))}
           </div>
-        </Card>
+        </div>
+
       </div>
 
-      {/* 4. Bottom Grid: Performance Ranges & Recent Activities */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
-        {/* Performance Distribution Chart */}
-        <Card title="Performance Comparison" subtitle="Count of youth grouped by attendance bracket" className="lg:col-span-1">
-          <div className="h-64 mt-4">
+      {/* Monthly Comparison (Bar Chart) */}
+      <div className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm mb-8">
+        <div className="flex items-center space-x-2 pb-4 border-b border-slate-50 mb-4">
+          <BarChart3 className="h-4.5 w-4.5 text-brand-orange-500" />
+          <h4 className="text-base font-bold text-[#2C1F16] font-serif tracking-tight">Monthly Comparison</h4>
+        </div>
+        <div className="h-64">
+          {barChartData.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={barChartData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
-                <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#64748B' }} axisLine={false} tickLine={false} />
-                <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#64748B' }} axisLine={false} tickLine={false} />
-                <Tooltip cursor={{ fill: 'rgba(241, 245, 249, 0.4)' }} />
-                <Bar dataKey="count" radius={[8, 8, 0, 0]}>
-                  {barChartData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.fill} />
-                  ))}
-                </Bar>
+              <BarChart data={barChartData} margin={{ left: -25, right: 10, top: 10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
+                <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#94A3B8' }} tickLine={false} axisLine={false} />
+                <YAxis domain={[0, 100]} tick={{ fontSize: 10, fill: '#94A3B8' }} tickLine={false} axisLine={false} />
+                <Tooltip contentStyle={{ fontSize: 12, borderRadius: 12 }} />
+                <Bar dataKey="Rate" fill="#FFA94D" radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
-          </div>
-        </Card>
+          ) : (
+            <div className="h-full flex items-center justify-center text-xs text-slate-400 uppercase font-semibold">No monthly summaries recorded</div>
+          )}
+        </div>
+      </div>
 
-        {/* Recent Activities Timeline */}
-        <Card title="Recent Activities" subtitle="Audited operations logs from coordinators" className="lg:col-span-2">
-          <div className="flow-root mt-4">
-            <ul className="-mb-8 max-h-64 overflow-y-auto pr-2">
-              {activities.map((activity, activityIdx) => (
-                <li key={activity.id}>
-                  <div className="relative pb-6">
-                    {activityIdx !== activities.length - 1 ? (
-                      <span className="absolute top-4 left-4 -ml-px h-full w-0.5 bg-slate-100" aria-hidden="true" />
-                    ) : null}
-                    <div className="relative flex space-x-3">
-                      <div>
-                        <span className={`
-                          h-8.5 w-8.5 rounded-full flex items-center justify-center ring-4 ring-white text-xs font-semibold
-                          ${activity.type === 'attendance' ? 'bg-brand-blue-50 text-brand-blue-600' : ''}
-                          ${activity.type === 'registration' ? 'bg-brand-orange-50 text-brand-orange-600' : ''}
-                          ${activity.type === 'report' ? 'bg-green-50 text-green-600' : ''}
-                          ${activity.type === 'status' ? 'bg-yellow-50 text-yellow-600' : ''}
-                          ${activity.type === 'system' ? 'bg-slate-100 text-slate-600' : ''}
-                        `}>
-                          {activity.type === 'attendance' && '📋'}
-                          {activity.type === 'registration' && '👤'}
-                          {activity.type === 'report' && '📈'}
-                          {activity.type === 'status' && '⚙️'}
-                          {activity.type === 'system' && '💻'}
-                        </span>
-                      </div>
-                      <div className="flex-1 min-w-0 pt-1.5 flex justify-between space-x-4">
-                        <div>
-                          <p className="text-xs text-slate-600">
-                            <span className="font-semibold text-slate-800">{activity.user}</span>{' '}
-                            {activity.message}
-                          </p>
-                        </div>
-                        <div className="text-right text-[10px] whitespace-nowrap text-slate-400 font-medium">
-                          {dayjs(activity.timestamp).format('DD MMM, h:mm A')}
-                        </div>
-                      </div>
-                    </div>
+      {/* 4. Performance Tables (Side by side) */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+        {/* Top 5 Attendance */}
+        <div className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm">
+          <h4 className="text-sm font-bold text-[#2C1F16] font-serif tracking-tight border-b border-slate-100 pb-3 mb-3">Top 5 Attendance</h4>
+          <div className="divide-y divide-slate-50">
+            {performanceTables.top5.length > 0 ? (
+              performanceTables.top5.map((user) => (
+                <div key={user.id} className="flex items-center justify-between py-2.5">
+                  <div className="flex items-center space-x-3.5">
+                    <Avatar src={user.photoUrl} name={user.name} size="xs" />
+                    <span className="text-xs font-bold text-slate-700 truncate max-w-[120px]">{user.name}</span>
                   </div>
-                </li>
-              ))}
-            </ul>
+                  <span className="text-xs font-extrabold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">{user.attendancePct}%</span>
+                </div>
+              ))
+            ) : (
+              <p className="text-xs text-slate-400 py-4 text-center uppercase">No roster data available</p>
+            )}
           </div>
-        </Card>
+        </div>
+
+        {/* Below 50% Attendance */}
+        <div className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm">
+          <h4 className="text-sm font-bold text-red-655 font-serif tracking-tight border-b border-slate-100 pb-3 mb-3">Below 50% Attendance</h4>
+          <div className="divide-y divide-slate-50 max-h-64 overflow-y-auto pr-1">
+            {performanceTables.below50.length > 0 ? (
+              performanceTables.below50.map((user) => (
+                <div key={user.id} className="flex items-center justify-between py-2.5">
+                  <div className="flex items-center space-x-3.5">
+                    <Avatar src={user.photoUrl} name={user.name} size="xs" />
+                    <span className="text-xs font-bold text-slate-700 truncate max-w-[120px]">{user.name}</span>
+                  </div>
+                  <span className="text-xs font-extrabold text-red-500 bg-red-50 px-2 py-0.5 rounded">{user.attendancePct}%</span>
+                </div>
+              ))
+            ) : (
+              <p className="text-xs text-slate-400 py-4 text-center uppercase">None below 50%</p>
+            )}
+          </div>
+        </div>
+
+        {/* Perfect Attendance (100%) */}
+        <div className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm">
+          <h4 className="text-sm font-bold text-emerald-750 font-serif tracking-tight border-b border-slate-100 pb-3 mb-3">Perfect Attendance (100%)</h4>
+          <div className="divide-y divide-slate-50 max-h-64 overflow-y-auto pr-1">
+            {performanceTables.perfect.length > 0 ? (
+              performanceTables.perfect.map((user) => (
+                <div key={user.id} className="flex items-center justify-between py-2.5">
+                  <div className="flex items-center space-x-3.5">
+                    <Avatar src={user.photoUrl} name={user.name} size="xs" />
+                    <span className="text-xs font-bold text-slate-700 truncate max-w-[120px]">{user.name}</span>
+                  </div>
+                  <span className="text-xs font-extrabold text-blue-500 bg-blue-50 px-2 py-0.5 rounded">100%</span>
+                </div>
+              ))
+            ) : (
+              <p className="text-xs text-slate-400 py-4 text-center uppercase">No perfect attendance candidates</p>
+            )}
+          </div>
+        </div>
+
       </div>
 
     </DashboardLayout>

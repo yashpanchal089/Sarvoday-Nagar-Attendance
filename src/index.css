@@ -1,9 +1,10 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
 
 @import "tailwindcss";
 
 @theme {
   --font-sans: 'Outfit', 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-serif: 'Lora', Georgia, Cambria, "Times New Roman", Times, serif;
   
   --color-brand-orange-50: #FFF7ED;
   --color-brand-orange-100: #FFEDD5;
@@ -23,6 +24,12 @@
 }
 
 /* Base custom styles to give the app a premium, smooth, polished look */
+@media (max-width: 767px) {
+  html {
+    font-size: 90%; /* Scale down base text sizing on mobile devices for a tighter density */
+  }
+}
+
 @media (min-width: 1024px) {
   html {
     font-size: 112.5%; /* Zoom/scale up default text sizing proportionally on laptops */
@@ -63,6 +70,21 @@ body {
     opacity: 0;
   }
   to {
+    opacity: 1;
+  }
+}
+
+.toast-enter {
+  animation: toastSlideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes toastSlideDown {
+  from {
+    transform: translateY(-20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
     opacity: 1;
   }
 }

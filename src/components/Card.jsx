@@ -22,19 +22,19 @@ export const Card = ({
   return (
     <div
       onClick={isClickable ? onClick : undefined}
-      className={`${baseStyle} ${hoverStyle} ${className}`}
+      className={`${baseStyle} ${hoverStyle} ${paddingStyle} ${className}`}
       {...props}
     >
       {(title || subtitle || extra) && (
-        <div className={`flex items-center justify-between border-b border-slate-50 pb-4 mb-4 ${padded ? 'px-6 pt-5 -mx-6 -mt-5' : ''}`}>
+        <div className={`flex items-center justify-between border-b border-slate-100 pb-4 mb-4 ${padded ? '-mx-5 -mt-5 md:-mx-6 md:-mt-6 px-5 pt-5 md:px-6 md:pt-6' : ''}`}>
           <div>
-            {title && <h3 className="text-base font-semibold text-slate-800 tracking-tight">{title}</h3>}
+            {title && <h3 className="text-base font-bold text-slate-800 tracking-tight">{title}</h3>}
             {subtitle && <p className="text-xs text-slate-500 mt-0.5">{subtitle}</p>}
           </div>
           {extra && <div className="flex items-center space-x-2">{extra}</div>}
         </div>
       )}
-      <div className={paddingStyle}>
+      <div>
         {children}
       </div>
     </div>

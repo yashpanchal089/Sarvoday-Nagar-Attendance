@@ -1,229 +1,101 @@
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import dayjs from 'dayjs';
-import { initialUsers, initialActivities, generateMockAttendanceHistory } from '../utils/mockData';
 import { supabase } from '../utils/supabaseClient';
 
 const AppContext = createContext(null);
 
 export const AppProvider = ({ children }) => {
-  const [users, setUsers] = useState(() => {
-    const saved = localStorage.getItem('smym_users');
-    if (saved) return JSON.parse(saved);
-    return initialUsers;
-  });
+  const [users, setUsers] = useState([]);
+  const [attendance, setAttendance] = useState({});
+  const [activities, setActivities] = useState([]);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [isOnline, setIsOnline] = useState(window.navigator.onLine);
 
-  const [attendance, setAttendance] = useState(() => {
-    const saved = localStorage.getItem('smym_attendance');
-    if (saved) return JSON.parse(saved);
-    return generateMockAttendanceHistory(initialUsers);
-  });
-
-  const [activities, setActivities] = useState(() => {
-    const saved = localStorage.getItem('smym_activities');
-    return saved ? JSON.parse(saved) : initialActivities;
-  });
-
-  const [currentUser, setCurrentUser] = useState(() => {
-    const saved = localStorage.getItem('smym_user_session');
-    return saved ? JSON.parse(saved) : null;
-  });
-
-  const [admins, setAdmins] = useState(() => {
-    const saved = localStorage.getItem('smym_admins');
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  const [loading, setLoading] = useState(false);
-
-  // Sync state to local storage as fallback
+  // Network Status Detectors
   useEffect(() => {
-    localStorage.setItem('smym_users', JSON.stringify(users));
-  }, [users]);
+    const goOnline = () => setIsOnline(true);
+    const goOffline = () => setIsOnline(false);
 
-  useEffect(() => {
-    localStorage.setItem('smym_attendance', JSON.stringify(attendance));
-  }, [attendance]);
+    window.addEventListener('online', goOnline);
+    window.addEventListener('offline', goOffline);
 
-  useEffect(() => {
-    localStorage.setItem('smym_activities', JSON.stringify(activities));
-  }, [activities]);
+    return () => {
+      window.removeEventListener('online', goOnline);
+      window.removeEventListener('offline', goOffline);
+    };
+  }, []);
 
-  useEffect(() => {
-    localStorage.setItem('smym_admins', JSON.stringify(admins));
-  }, [admins]);
-
-  useEffect(() => {
-    if (currentUser) {
-      localStorage.setItem('smym_user_session', JSON.stringify(currentUser));
-    } else {
-      localStorage.removeItem('smym_user_session');
-    }
-  }, [currentUser]);
-
-  // Load initial data from Supabase and migrate local storage data if cloud database is empty
-  const fetchAllData = async () => {
+  // Fetch all data from Supabase
+  const fetchYuvaks = async () => {
     try {
-      if (!supabase) {
-        console.warn("Supabase client is not initialized. Using local storage data.");
-        return;
-      }
-
-      setLoading(true);
-
-      // Fetch local storage fallback data
-      const savedLocalUsers = localStorage.getItem('smym_users');
-      const localUsers = savedLocalUsers ? JSON.parse(savedLocalUsers) : [];
-      const savedLocalAdmins = localStorage.getItem('smym_admins');
-      const localAdmins = savedLocalAdmins ? JSON.parse(savedLocalAdmins) : [];
-
-      // 1. Load / Migrate Admins
-      let { data: adminsData, error: adminsErr } = await supabase
-        .from('admins')
-        .select('*');
-
-      if (!adminsErr && adminsData) {
-        if (adminsData.length === 0 && localAdmins.length > 0) {
-          console.log("Migrating local admins to Supabase...");
-          const insertAdmins = localAdmins.map(a => ({
-            email: a.email.toLowerCase(),
-            password: a.password,
-            first_name: a.firstName,
-            last_name: a.lastName
-          }));
-          const { data: migratedAdmins, error: migrateAdminsErr } = await supabase
-            .from('admins')
-            .insert(insertAdmins)
-            .select();
-          
-          if (!migrateAdminsErr && migratedAdmins) {
-            adminsData = migratedAdmins;
-          }
-        }
-
-        setAdmins(adminsData.map(a => ({
-          id: a.id,
-          email: a.email,
-          password: a.password,
-          firstName: a.first_name,
-          lastName: a.last_name
-        })));
-      }
-
-      // 2. Load / Migrate Yuvaks (users)
-      let { data: yuvaksData, error: yuvaksErr } = await supabase
+      if (!supabase) return;
+      const { data, error } = await supabase
         .from('yuvaks')
-        .select('*');
+        .select('*')
+        .order('created_at', { ascending: false });
 
-      if (!yuvaksErr && yuvaksData) {
-        if (yuvaksData.length === 0 && localUsers.length > 0) {
-          console.log("Migrating local storage yuvaks to Supabase...");
-          const insertYuvaks = localUsers.map(y => ({
-            name: y.name,
-            photo: y.photo || '',
-            dob: y.dob || null,
+      if (!error && data) {
+        setUsers(data.map(y => {
+          const fName = y.first_name || '';
+          const mName = y.middle_name || '';
+          const lName = y.last_name || '';
+          const fullName = `${fName} ${mName ? mName + ' ' : ''}${lName}`.trim();
+          return {
+            id: y.id,
+            firstName: fName,
+            middleName: mName,
+            lastName: lName,
+            name: fullName, // legacy template compatibility
+            photo: y.photo_url || '',
+            photoUrl: y.photo_url || '',
+            dob: y.dob || '',
+            age: y.age || 0,
             mobile: y.mobile || '',
+            occupation: y.occupation || 'Other',
             address: y.address || '',
-            email: y.email || '',
-            gender: y.gender || 'Male',
-            joining_date: y.joiningDate || dayjs().format('YYYY-MM-DD'),
-            status: y.status || 'active',
-            notes: y.notes || ''
-          }));
-
-          const { data: migratedYuvaks, error: migrateYuvaksErr } = await supabase
-            .from('yuvaks')
-            .insert(insertYuvaks)
-            .select();
-
-          if (!migrateYuvaksErr && migratedYuvaks) {
-            yuvaksData = migratedYuvaks;
-
-            // Map old local IDs to new Supabase UUIDs
-            const idMap = {};
-            localUsers.forEach(localUser => {
-              const matchedCloud = migratedYuvaks.find(c => c.name === localUser.name && c.mobile === localUser.mobile);
-              if (matchedCloud) {
-                idMap[localUser.id] = matchedCloud.id;
-              }
-            });
-
-            // Migrate Attendance Records
-            const savedLocalAttendance = localStorage.getItem('smym_attendance');
-            const localAttendance = savedLocalAttendance ? JSON.parse(savedLocalAttendance) : {};
-            const attendanceRows = [];
-
-            Object.keys(localAttendance).forEach(date => {
-              Object.keys(localAttendance[date]).forEach(oldUserId => {
-                const newUserId = idMap[oldUserId];
-                if (newUserId) {
-                  attendanceRows.push({
-                    date,
-                    yuvak_id: newUserId,
-                    status: localAttendance[date][oldUserId]
-                  });
-                }
-              });
-            });
-
-            if (attendanceRows.length > 0) {
-              await supabase.from('attendance').insert(attendanceRows);
-              console.log("Attendance records migrated to Supabase successfully!");
-            }
-
-            // Migrate Activities
-            const savedLocalActivities = localStorage.getItem('smym_activities');
-            const localActivities = savedLocalActivities ? JSON.parse(savedLocalActivities) : [];
-            const activityRows = localActivities.map(act => ({
-              user_name: act.user,
-              type: act.type,
-              message: act.message,
-              created_at: dayjs(act.timestamp).toISOString()
-            }));
-
-            if (activityRows.length > 0) {
-              await supabase.from('activities').insert(activityRows);
-            }
-          }
-        }
-
-        setUsers(yuvaksData.map(y => ({
-          id: y.id,
-          name: y.name,
-          photo: y.photo,
-          dob: y.dob,
-          mobile: y.mobile,
-          address: y.address,
-          email: y.email,
-          gender: y.gender,
-          joiningDate: y.joining_date,
-          status: y.status,
-          notes: y.notes
-        })));
+            createdAt: y.created_at
+          };
+        }));
       }
+    } catch (err) {
+      console.error('Error fetching yuvaks:', err);
+    }
+  };
 
-      // 3. Fetch attendance
-      const { data: attendanceData, error: attendanceErr } = await supabase
+  const fetchAttendance = async () => {
+    try {
+      if (!supabase) return;
+      const { data, error } = await supabase
         .from('attendance')
         .select('*');
-      if (!attendanceErr && attendanceData) {
+
+      if (!error && data) {
         const formatted = {};
-        attendanceData.forEach(row => {
-          if (!formatted[row.date]) {
-            formatted[row.date] = {};
+        data.forEach(row => {
+          if (!formatted[row.attendance_date]) {
+            formatted[row.attendance_date] = {};
           }
-          formatted[row.date][row.yuvak_id] = row.status;
+          formatted[row.attendance_date][row.yuvak_id] = row.status;
         });
         setAttendance(formatted);
       }
+    } catch (err) {
+      console.error('Error fetching attendance:', err);
+    }
+  };
 
-      // 4. Fetch activities
-      const { data: activitiesData, error: activitiesErr } = await supabase
+  const fetchActivities = async () => {
+    try {
+      if (!supabase) return;
+      const { data, error } = await supabase
         .from('activities')
         .select('*')
         .order('created_at', { ascending: false })
         .limit(50);
-      if (!activitiesErr && activitiesData) {
-        setActivities(activitiesData.map(act => ({
+
+      if (!error && data) {
+        setActivities(data.map(act => ({
           id: act.id,
           user: act.user_name,
           type: act.type,
@@ -232,29 +104,87 @@ export const AppProvider = ({ children }) => {
         })));
       }
     } catch (err) {
-      console.error("Error connecting to Supabase database:", err);
-    } finally {
-      setLoading(false);
+      console.error('Error fetching activities:', err);
     }
   };
 
-  useEffect(() => {
-    fetchAllData();
-  }, []);
+  const fetchAllData = async () => {
+    setLoading(true);
+    await Promise.all([
+      fetchYuvaks(),
+      fetchAttendance(),
+      fetchActivities()
+    ]);
+    setLoading(false);
+  };
 
-  // Sync System Action Logger (Local & Supabase)
-  const addActivity = async (type, message) => {
-    const userName = currentUser ? `Admin (${currentUser.name})` : 'System';
-    const newActivity = {
-      id: `act_${Date.now()}`,
-      user: userName,
-      type,
-      message,
-      timestamp: dayjs().format('YYYY-MM-DD HH:mm:ss')
+  // Run on startup
+  useEffect(() => {
+    // Check if user session already exists in supabase auth
+    const initAuth = async () => {
+      if (!supabase) {
+        setLoading(false);
+        return;
+      }
+      
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        const { data: profile } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', session.user.id)
+          .maybeSingle();
+
+        if (profile) {
+          setCurrentUser({
+            id: profile.id,
+            name: `${profile.first_name} ${profile.last_name}`,
+            firstName: profile.first_name,
+            lastName: profile.last_name,
+            role: 'Youth Coordinator',
+            avatar: '',
+            email: profile.email
+          });
+        }
+      }
+      await fetchAllData();
     };
 
-    setActivities(prev => [newActivity, ...prev.slice(0, 49)]);
+    initAuth();
+  }, []);
 
+  // Real-Time Database Channel Subscriptions
+  useEffect(() => {
+    if (!supabase) return;
+
+    const yuvaksChannel = supabase.channel('yuvaks-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'yuvaks' }, () => {
+        fetchYuvaks();
+      })
+      .subscribe();
+
+    const attendanceChannel = supabase.channel('attendance-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance' }, () => {
+        fetchAttendance();
+      })
+      .subscribe();
+
+    const activitiesChannel = supabase.channel('activities-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'activities' }, () => {
+        fetchActivities();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(yuvaksChannel);
+      supabase.removeChannel(attendanceChannel);
+      supabase.removeChannel(activitiesChannel);
+    };
+  }, []);
+
+  // Logger helper
+  const addActivity = async (type, message) => {
+    const userName = currentUser ? `Admin (${currentUser.firstName})` : 'System';
     try {
       if (supabase) {
         await supabase.from('activities').insert({
@@ -264,276 +194,325 @@ export const AppProvider = ({ children }) => {
         });
       }
     } catch (err) {
-      console.error('Error saving activity to Supabase:', err);
+      console.error('Error saving activity:', err);
     }
   };
 
-  // Auth Operations
+  // Auth Functions
   const login = async (email, password) => {
-    console.log('Login request received for:', email, 'Password:', password);
-
-    // Standard hardcoded bypass developer console admin account
-    if (email === 'admin@sarvoday.org' && password === 'admin123') {
-      const devAdmin = {
-        name: 'Ketan Vyas',
-        firstName: 'Ketan',
-        lastName: 'Vyas',
-        role: 'Youth Coordinator',
-        avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80',
-        email: 'ketan.vyas@sarvoday.org'
-      };
-      setCurrentUser(devAdmin);
-      await addActivity('system', 'User Admin (Ketan Vyas) logged in successfully');
-      return { success: true };
-    }
-
     try {
-      if (supabase) {
-        const { data, error } = await supabase
-          .from('admins')
-          .select('*')
-          .eq('email', email.toLowerCase())
-          .maybeSingle();
+      if (!supabase) return { success: false, message: 'Supabase client not loaded' };
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email: email.toLowerCase(),
+        password,
+      });
 
-        if (!error && data) {
-          if (data.password === password) {
-            const sessionUser = {
-              name: `${data.first_name} ${data.last_name}`,
-              firstName: data.first_name,
-              lastName: data.last_name,
-              role: 'Youth Coordinator',
-              avatar: '',
-              email: data.email
-            };
-            setCurrentUser(sessionUser);
-            await addActivity('system', `User ${data.first_name} ${data.last_name} logged in successfully`);
-            return { success: true };
-          } else {
-            return { success: false, message: 'Invalid email or password' };
-          }
-        }
+      if (authError) {
+        return { success: false, message: authError.message };
       }
-    } catch (err) {
-      console.error('Supabase authentication check failed:', err);
-    }
 
-    // Fallback to local memory lists
-    const registeredAdmin = admins.find(a => a.email.toLowerCase() === email.toLowerCase() && a.password === password);
-    if (registeredAdmin) {
-      const sessionUser = {
-        name: `${registeredAdmin.firstName} ${registeredAdmin.lastName}`,
-        firstName: registeredAdmin.firstName,
-        lastName: registeredAdmin.lastName,
-        role: 'Youth Coordinator',
-        avatar: '',
-        email: registeredAdmin.email
-      };
-      setCurrentUser(sessionUser);
-      await addActivity('system', `User ${registeredAdmin.firstName} ${registeredAdmin.lastName} logged in successfully`);
-      return { success: true };
-    }
-
-    return { success: false, message: 'Invalid email or password' };
-  };
-
-  const registerAdmin = async (adminData) => {
-    console.log('Attempting to register account:', adminData);
-    if (adminData.email.toLowerCase() === 'admin@sarvoday.org') {
-      return { success: false, message: 'Email address is already registered' };
-    }
-
-    try {
-      if (supabase) {
-        // Query to check existing
-        const { data: existing } = await supabase
-          .from('admins')
-          .select('email')
-          .eq('email', adminData.email.toLowerCase())
+      if (authData?.user) {
+        const { data: profile, error: profileError } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', authData.user.id)
           .maybeSingle();
 
-        if (existing) {
-          return { success: false, message: 'Email address is already registered' };
+        if (profileError || !profile) {
+          const sessionUser = {
+            id: authData.user.id,
+            name: email.split('@')[0],
+            firstName: email.split('@')[0],
+            lastName: '',
+            role: 'Youth Coordinator',
+            avatar: '',
+            email: email
+          };
+          setCurrentUser(sessionUser);
+        } else {
+          const sessionUser = {
+            id: profile.id,
+            name: `${profile.first_name} ${profile.last_name}`,
+            firstName: profile.first_name,
+            lastName: profile.last_name,
+            role: 'Youth Coordinator',
+            avatar: '',
+            email: profile.email
+          };
+          setCurrentUser(sessionUser);
         }
-
-        const { data, error } = await supabase
-          .from('admins')
-          .insert({
-            email: adminData.email.toLowerCase(),
-            password: adminData.password,
-            first_name: adminData.firstName,
-            last_name: adminData.lastName
-          })
-          .select()
-          .single();
-
-        if (error) throw error;
-
-        // Sync local memory list
-        setAdmins(prev => [...prev, {
-          id: data.id,
-          email: data.email,
-          password: data.password,
-          firstName: data.first_name,
-          lastName: data.last_name
-        }]);
-
+        await addActivity('system', 'User logged in successfully');
         return { success: true };
       }
     } catch (err) {
-      console.error('Supabase registration failed, trying local fallback:', err);
+      console.error('Login exception:', err);
+      return { success: false, message: err.message };
     }
-
-    // Local Storage fallback check
-    if (admins.some(a => a.email.toLowerCase() === adminData.email.toLowerCase())) {
-      return { success: false, message: 'Email address is already registered' };
-    }
-
-    const newAdmin = {
-      id: `admin_${Date.now()}`,
-      ...adminData
-    };
-    setAdmins(prev => [...prev, newAdmin]);
-    return { success: true };
+    return { success: false, message: 'Authentication failure' };
   };
 
-  const logout = () => {
-    addActivity('system', 'User Admin logged out');
+  const registerAdmin = async (adminData) => {
+    try {
+      if (!supabase) return { success: false, message: 'Supabase client not loaded' };
+      
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: adminData.email.toLowerCase(),
+        password: adminData.password,
+      });
+
+      if (authError) {
+        return { success: false, message: authError.message };
+      }
+
+      if (authData?.user) {
+        const { error: dbError } = await supabase
+          .from('users')
+          .insert({
+            id: authData.user.id,
+            first_name: adminData.firstName,
+            last_name: adminData.lastName,
+            email: adminData.email.toLowerCase()
+          });
+
+        if (dbError) {
+          return { success: false, message: dbError.message };
+        }
+        
+        return { success: true };
+      }
+    } catch (err) {
+      console.error('Register exception:', err);
+      return { success: false, message: err.message };
+    }
+    return { success: false, message: 'Registration failure' };
+  };
+
+  const logout = async () => {
+    if (supabase) {
+      await supabase.auth.signOut();
+    }
     setCurrentUser(null);
   };
 
-  // User CRUD Operations
-  const addUser = async (userData) => {
-    const localId = `u_${Date.now()}`;
-    const joiningDateStr = userData.joiningDate || dayjs().format('YYYY-MM-DD');
-
+  // Upload photo to storage
+  const uploadPhoto = async (base64Data, filename) => {
     try {
-      if (supabase) {
+      if (!supabase) return null;
+      
+      // Convert base64 data to blob
+      const res = await fetch(base64Data);
+      const blob = await res.blob();
+      
+      const fileExt = filename.split('.').pop() || 'jpg';
+      const path = `${Date.now()}.${fileExt}`;
+
+      const { data, error } = await supabase.storage
+        .from('yuvak-photos')
+        .upload(path, blob, {
+          contentType: 'image/jpeg',
+          upsert: true
+        });
+
+      if (error) {
+        console.error('Supabase storage upload error:', error);
+        return null;
+      }
+
+      const { data: urlData } = supabase.storage
+        .from('yuvak-photos')
+        .getPublicUrl(path);
+
+      return urlData.publicUrl;
+    } catch (err) {
+      console.error('Upload photo exception:', err);
+      return null;
+    }
+  };
+
+  // Yuvak CRUD Operations with Optimistic Updates
+  const addUser = async (userData) => {
+    const tempId = 'temp_' + Date.now();
+    const finalPhotoUrl = userData.photo || '';
+    const nameStr = `${userData.firstName} ${userData.middleName ? userData.middleName + ' ' : ''}${userData.lastName}`.trim();
+
+    const newUserObj = {
+      id: tempId,
+      firstName: userData.firstName,
+      middleName: userData.middleName || '',
+      lastName: userData.lastName,
+      name: nameStr,
+      photo: finalPhotoUrl,
+      photoUrl: finalPhotoUrl,
+      dob: userData.dob,
+      age: parseInt(userData.age) || 0,
+      mobile: userData.mobile,
+      occupation: userData.occupation || 'Other',
+      address: userData.address || '',
+      createdAt: dayjs().toISOString(),
+      attendancePct: 100
+    };
+
+    // Update local state immediately
+    setUsers(prev => [newUserObj, ...prev]);
+
+    // Perform database operations in the background
+    (async () => {
+      try {
+        if (!supabase) return;
+        
+        let uploadedUrl = '';
+        if (userData.photo && userData.photo.startsWith('data:image')) {
+          uploadedUrl = await uploadPhoto(userData.photo, `${userData.firstName}_${userData.lastName}.jpg`);
+        }
+
         const { data, error } = await supabase
           .from('yuvaks')
           .insert({
-            name: userData.name,
-            photo: userData.photo || '',
-            dob: userData.dob || null,
-            mobile: userData.mobile || '',
-            address: userData.address || '',
-            email: userData.email || '',
-            gender: userData.gender || 'Male',
-            joining_date: joiningDateStr,
-            status: userData.status || 'active',
-            notes: userData.notes || ''
+            first_name: userData.firstName,
+            middle_name: userData.middleName || '',
+            last_name: userData.lastName,
+            dob: userData.dob,
+            age: parseInt(userData.age) || 0,
+            mobile: userData.mobile,
+            occupation: userData.occupation,
+            address: userData.address,
+            photo_url: uploadedUrl || finalPhotoUrl
           })
           .select()
           .single();
 
         if (error) throw error;
 
-        setUsers(prev => [{
+        // Replace temporary user with real database user in local state
+        const dbUser = {
           id: data.id,
-          name: data.name,
-          photo: data.photo,
+          firstName: data.first_name,
+          middleName: data.middle_name,
+          lastName: data.last_name,
+          name: `${data.first_name} ${data.middle_name ? data.middle_name + ' ' : ''}${data.last_name}`.trim(),
+          photo: data.photo_url || '',
+          photoUrl: data.photo_url || '',
           dob: data.dob,
+          age: data.age,
           mobile: data.mobile,
+          occupation: data.occupation,
           address: data.address,
-          email: data.email,
-          gender: data.gender,
-          joiningDate: data.joining_date,
-          status: data.status,
-          notes: data.notes
-        }, ...prev]);
+          createdAt: data.created_at,
+          attendancePct: 100
+        };
 
-        await addActivity('registration', `registered new Yuvak ${data.name}`);
-        return;
+        setUsers(prev => prev.map(u => u.id === tempId ? dbUser : u));
+        addActivity('registration', `registered new Yuvak ${userData.firstName} ${userData.lastName}`);
+      } catch (err) {
+        console.error('Error adding Yuvak in background:', err);
+        // Rollback temporary user on error
+        setUsers(prev => prev.filter(u => u.id !== tempId));
       }
-    } catch (err) {
-      console.error('Error saving Yuvak to database:', err);
-    }
+    })();
 
-    // Local fallback
-    const newUser = {
-      id: localId,
-      ...userData,
-      joiningDate: joiningDateStr,
-      status: userData.status || 'active'
-    };
-    setUsers(prev => [newUser, ...prev]);
-    await addActivity('registration', `registered new Yuvak ${newUser.name}`);
+    return { success: true };
   };
 
   const updateUser = async (updatedUser) => {
-    try {
-      if (supabase) {
+    // Keep reference of original user for potential rollback
+    const originalUser = users.find(u => u.id === updatedUser.id);
+    
+    // Update local state immediately
+    setUsers(prev => prev.map(u => u.id === updatedUser.id ? { ...u, ...updatedUser } : u));
+
+    (async () => {
+      try {
+        if (!supabase) return;
+
+        let finalPhotoUrl = updatedUser.photoUrl || updatedUser.photo || '';
+        if (finalPhotoUrl && finalPhotoUrl.startsWith('data:image')) {
+          const uploadUrl = await uploadPhoto(finalPhotoUrl, `${updatedUser.firstName}_${updatedUser.lastName}.jpg`);
+          finalPhotoUrl = uploadUrl || finalPhotoUrl;
+        }
+
         const { error } = await supabase
           .from('yuvaks')
           .update({
-            name: updatedUser.name,
-            photo: updatedUser.photo || '',
-            dob: updatedUser.dob || null,
-            mobile: updatedUser.mobile || '',
-            address: updatedUser.address || '',
-            email: updatedUser.email || '',
-            gender: updatedUser.gender || 'Male',
-            joining_date: updatedUser.joiningDate,
-            status: updatedUser.status,
-            notes: updatedUser.notes || ''
+            first_name: updatedUser.firstName,
+            middle_name: updatedUser.middleName || '',
+            last_name: updatedUser.lastName,
+            dob: updatedUser.dob,
+            age: parseInt(updatedUser.age) || 0,
+            mobile: updatedUser.mobile,
+            occupation: updatedUser.occupation,
+            address: updatedUser.address,
+            photo_url: finalPhotoUrl
           })
           .eq('id', updatedUser.id);
 
         if (error) throw error;
-      }
-    } catch (err) {
-      console.error('Error updating Yuvak on database:', err);
-    }
 
-    setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
-    await addActivity('status', `updated profile details of ${updatedUser.name}`);
+        addActivity('status', `updated profile of Yuvak ${updatedUser.firstName} ${updatedUser.lastName}`);
+        fetchYuvaks(); // background sync
+      } catch (err) {
+        console.error('Error updating Yuvak in background:', err);
+        // Rollback on error
+        if (originalUser) {
+          setUsers(prev => prev.map(u => u.id === updatedUser.id ? originalUser : u));
+        }
+      }
+    })();
   };
 
   const deleteUser = async (userId) => {
     const targetUser = users.find(u => u.id === userId);
     if (!targetUser) return;
 
-    try {
-      if (supabase) {
+    // Update local state immediately
+    setUsers(prev => prev.filter(u => u.id !== userId));
+
+    (async () => {
+      try {
+        if (!supabase) return;
+
         const { error } = await supabase
           .from('yuvaks')
           .delete()
           .eq('id', userId);
 
         if (error) throw error;
+
+        addActivity('status', `deleted Yuvak ${targetUser.firstName} ${targetUser.lastName}`);
+      } catch (err) {
+        console.error('Error deleting Yuvak in background:', err);
+        // Rollback on error
+        setUsers(prev => [targetUser, ...prev]);
       }
-    } catch (err) {
-      console.error('Error deleting Yuvak from database:', err);
-    }
-
-    setUsers(prev => prev.filter(u => u.id !== userId));
-    setAttendance(prev => {
-      const updated = { ...prev };
-      Object.keys(updated).forEach(date => {
-        delete updated[date][userId];
-      });
-      return updated;
-    });
-
-    await addActivity('status', `removed Yuvak ${targetUser.name} from the records`);
+    })();
   };
 
-  // Attendance Marking
+  // Attendance Operations with Optimistic Updates
   const saveAttendance = async (dateStr, recordMap) => {
-    try {
-      if (supabase) {
-        // Delete existing records on that date
+    // Update local state immediately so UI response is instant
+    setAttendance(prev => ({
+      ...prev,
+      [dateStr]: recordMap
+    }));
+
+    // Perform DB sync in the background
+    (async () => {
+      try {
+        if (!supabase) return;
+
+        // 1. Delete existing logs on this date to prevent duplicates
         const { error: deleteError } = await supabase
           .from('attendance')
           .delete()
-          .eq('date', dateStr);
+          .eq('attendance_date', dateStr);
 
         if (deleteError) throw deleteError;
 
-        // Insert new records
+        // 2. Insert new logs
         const insertRows = Object.keys(recordMap).map(yuvakId => ({
-          date: dateStr,
+          attendance_date: dateStr,
           yuvak_id: yuvakId,
-          status: recordMap[yuvakId]
+          status: recordMap[yuvakId],
+          marked_by: currentUser?.email || 'coordinator@sarvoday.org'
         }));
 
         if (insertRows.length > 0) {
@@ -543,21 +522,38 @@ export const AppProvider = ({ children }) => {
 
           if (insertError) throw insertError;
         }
+
+        addActivity('attendance', `marked attendance for ${dayjs(dateStr).format('MMMM DD, YYYY')}`);
+      } catch (err) {
+        console.error('Error saving attendance in background:', err);
+        // Re-sync with database to correct the UI state in case of network write failure
+        fetchAttendance();
       }
-    } catch (err) {
-      console.error('Error saving attendance in database:', err);
-    }
+    })();
 
-    // Always update local memory state immediately for immediate UI response
-    setAttendance(prev => ({
-      ...prev,
-      [dateStr]: recordMap
-    }));
-
-    await addActivity('attendance', `marked attendance for ${dayjs(dateStr).format('MMMM DD, YYYY')}`);
+    return { success: true };
   };
 
-  // Dynamic user attendance percentage calculation (Shared across lists and profile cards)
+  // Delete all attendance entries for a specific date
+  const deleteAttendanceRecord = async (dateStr) => {
+    try {
+      if (!supabase) return;
+
+      const { error } = await supabase
+        .from('attendance')
+        .delete()
+        .eq('attendance_date', dateStr);
+
+      if (error) throw error;
+
+      await addActivity('attendance', `deleted attendance record of ${dayjs(dateStr).format('MMMM DD, YYYY')}`);
+      await fetchAttendance();
+    } catch (err) {
+      console.error('Error deleting attendance record:', err);
+    }
+  };
+
+  // Memoized lists and calculations
   const usersWithAttendancePct = useMemo(() => {
     return users.map(user => {
       const userRecords = [];
@@ -570,11 +566,9 @@ export const AppProvider = ({ children }) => {
 
       if (userRecords.length === 0) return { ...user, attendancePct: 100 };
 
-      const presents = userRecords.filter(r => r === 'present').length;
-      const leaves = userRecords.filter(r => r === 'leave').length;
+      const presents = userRecords.filter(r => r === 'Present').length;
       const total = userRecords.length;
-
-      const percentage = Math.round(((presents + leaves) / total) * 100);
+      const percentage = Math.round((presents / total) * 100);
 
       return {
         ...user,
@@ -583,107 +577,86 @@ export const AppProvider = ({ children }) => {
     });
   }, [users, attendance]);
 
-  // Memoized System Calculations for Dashboards
   const stats = useMemo(() => {
-    const activeUsers = usersWithAttendancePct.filter(u => u.status === 'active');
     const totalUsersCount = usersWithAttendancePct.length;
 
     // 1. Overall Attendance %
     let totalMarks = 0;
-    let totalPresentsOrLeaves = 0;
+    let totalPresents = 0;
     Object.keys(attendance).forEach(date => {
       Object.keys(attendance[date]).forEach(uId => {
         const user = usersWithAttendancePct.find(u => u.id === uId);
-        if (user && user.status === 'active') {
+        if (user) {
           totalMarks++;
-          if (attendance[date][uId] === 'present' || attendance[date][uId] === 'leave') {
-            totalPresentsOrLeaves++;
+          if (attendance[date][uId] === 'Present') {
+            totalPresents++;
           }
         }
       });
     });
     const overallAttendancePct = totalMarks > 0 
-      ? Math.round((totalPresentsOrLeaves / totalMarks) * 100) 
+      ? Math.round((totalPresents / totalMarks) * 100) 
       : 0;
 
-    // 2. Weekly Perfect Attendance Count
-    const past7Days = [];
-    for (let i = 0; i < 7; i++) {
-      past7Days.push(dayjs().subtract(i, 'day').format('YYYY-MM-DD'));
-    }
+    // 2. Perfect Attendance Count (Users with overall percentage = 100)
+    // Avoid counting if there are no sessions at all
+    const hasAnySessions = Object.keys(attendance).length > 0;
+    const perfectAttendanceCount = hasAnySessions 
+      ? usersWithAttendancePct.filter(u => u.attendancePct === 100).length
+      : 0;
 
-    const perfectAttendanceCount = activeUsers.filter(user => {
-      let perfect = true;
-      let hasRecord = false;
-      past7Days.forEach(date => {
-        if (attendance[date] && attendance[date][user.id]) {
-          hasRecord = true;
-          if (attendance[date][user.id] === 'absent') {
-            perfect = false;
+    // 3. 3-Day Absent Alert Count
+    let threeDayAbsentAlertCount = 0;
+    const sortedDates = Object.keys(attendance).sort((a, b) => dayjs(b).diff(dayjs(a)));
+    
+    usersWithAttendancePct.forEach(user => {
+      let consecutiveAbsents = 0;
+      for (const d of sortedDates) {
+        if (attendance[d] && attendance[d][user.id]) {
+          if (attendance[d][user.id] === 'Absent') {
+            consecutiveAbsents++;
+            if (consecutiveAbsents === 3) {
+              threeDayAbsentAlertCount++;
+              break;
+            }
+          } else {
+            // Broken chain of absents (Present)
+            break;
           }
         }
-      });
-      return hasRecord && perfect;
-    }).length;
-
-    // 3. Today's Attendance %
-    const todayStr = dayjs().format('YYYY-MM-DD');
-    let todayPresent = 0;
-    let todayMarked = 0;
-
-    if (attendance[todayStr]) {
-      Object.keys(attendance[todayStr]).forEach(uId => {
-        const user = usersWithAttendancePct.find(u => u.id === uId);
-        if (user && user.status === 'active') {
-          todayMarked++;
-          if (attendance[todayStr][uId] === 'present' || attendance[todayStr][uId] === 'leave') {
-            todayPresent++;
-          }
-        }
-      });
-    }
-
-    const todayAttendancePct = todayMarked > 0 
-      ? Math.round((todayPresent / todayMarked) * 100) 
-      : null;
+      }
+    });
 
     return {
       totalUsers: totalUsersCount,
       overallAttendance: overallAttendancePct,
       perfectAttendance: perfectAttendanceCount,
-      todayAttendance: todayAttendancePct,
+      absentAlerts: threeDayAbsentAlertCount,
     };
   }, [usersWithAttendancePct, attendance]);
 
-  // Individual user's detailed attendance statistics helper
   const getUserStats = (userId) => {
     const userRecords = [];
-    const history = [];
-
+    const historyList = [];
     const sortedDates = Object.keys(attendance).sort((a, b) => dayjs(b).diff(dayjs(a)));
 
     sortedDates.forEach(date => {
       if (attendance[date] && attendance[date][userId]) {
         const status = attendance[date][userId];
         userRecords.push(status);
-        history.push({
-          date,
-          status
-        });
+        historyList.push({ date, status });
       }
     });
 
     const total = userRecords.length;
-    const presents = userRecords.filter(r => r === 'present').length;
-    const leaves = userRecords.filter(r => r === 'leave').length;
-    const absents = userRecords.filter(r => r === 'absent').length;
+    const presents = userRecords.filter(r => r === 'Present').length;
+    const absents = userRecords.filter(r => r === 'Absent').length;
 
     return {
       total,
       presents,
-      leaves,
       absents,
-      history
+      history: historyList
     };
   };
 
@@ -694,12 +667,14 @@ export const AppProvider = ({ children }) => {
       activities,
       currentUser,
       stats,
+      isOnline,
       login,
       logout,
       addUser,
       updateUser,
       deleteUser,
       saveAttendance,
+      deleteAttendanceRecord,
       getUserStats,
       addActivity,
       registerAdmin,

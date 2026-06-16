@@ -1,12 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useApp } from '../context/AppContext';
 import { useNavigation } from '../context/NavigationContext';
 import DashboardLayout from '../layouts/DashboardLayout';
-import Card from '../components/Card';
-import Button from '../components/Button';
 import Avatar from '../components/Avatar';
-import Badge from '../components/Badge';
-import { Calendar, Save, CheckCircle, AlertCircle, Sparkles, Check, X, ShieldAlert } from 'lucide-react';
+import { Calendar, Save, CheckCircle, Search, Check, X, RotateCcw } from 'lucide-react';
 import dayjs from 'dayjs';
 
 export const AttendanceMarking = () => {
@@ -16,329 +14,309 @@ export const AttendanceMarking = () => {
   // Date selection (defaults to today)
   const [selectedDate, setSelectedDate] = useState(dayjs().format('YYYY-MM-DD'));
   
-  // Local attendance grid map: userId -> status
+  // Local attendance grid map: userId -> status ('Present' or 'Absent')
   const [markingGrid, setMarkingGrid] = useState({});
   const [isSaved, setIsSaved] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
-  // Active users only should be marked
-  const activeUsers = users.filter(user => user.status === 'active');
-
-  // Load existing records whenever selectedDate changes
+  // Reset saved notification when selected date changes
   useEffect(() => {
+    setIsSaved(false);
+  }, [selectedDate]);
+
+  // Load existing records or default to 'Absent'
+  useEffect(() => {
+    if (isSaved) return; // Prevent resetting grid values while the success popup is active
+
     const existingRecords = attendance[selectedDate] || {};
     const initialGrid = {};
     
-    activeUsers.forEach(user => {
-      // If a record exists, use it. Otherwise, leave it empty/unmarked
-      initialGrid[user.id] = existingRecords[user.id] || null;
+    users.forEach(user => {
+      const statusVal = existingRecords[user.id];
+      if (statusVal) {
+        initialGrid[user.id] = statusVal === 'Present' || statusVal === 'present' ? 'Present' : 'Absent';
+      } else {
+        initialGrid[user.id] = 'Absent';
+      }
     });
 
     setMarkingGrid(initialGrid);
-    setIsSaved(false);
-  }, [selectedDate, attendance, users]);
+  }, [selectedDate, attendance, users, isSaved]);
 
   // Update status for a specific user
-  const handleMark = (userId, status) => {
+  const handleToggle = (userId) => {
     setMarkingGrid(prev => ({
       ...prev,
-      [userId]: status
+      [userId]: prev[userId] === 'Present' ? 'Absent' : 'Present'
     }));
   };
 
   // Quick select helpers
   const markAll = (status) => {
     const updated = {};
-    activeUsers.forEach(user => {
+    users.forEach(user => {
       updated[user.id] = status;
     });
     setMarkingGrid(updated);
   };
 
-  const handleSave = () => {
-    // Validate that at least some users are marked, or prompt
-    const unmarkedCount = activeUsers.filter(user => !markingGrid[user.id]).length;
-    
-    if (unmarkedCount > 0) {
-      if (!confirm(`You have ${unmarkedCount} unmarked Yuvak(s). Saving will mark them as Absent. Do you want to proceed?`)) {
-        return;
-      }
-    }
-
-    // Prepare complete payload (any unmarked active users default to 'absent')
-    const finalRecords = {};
-    activeUsers.forEach(user => {
-      finalRecords[user.id] = markingGrid[user.id] || 'absent';
+  const resetSelection = () => {
+    const updated = {};
+    users.forEach(user => {
+      updated[user.id] = 'Absent';
     });
-
-    saveAttendance(selectedDate, finalRecords);
-    setIsSaved(true);
-
-    // Fade out notification
-    setTimeout(() => {
-      setIsSaved(false);
-      navigateTo('dashboard'); // Redirect to dashboard
-    }, 1500);
+    setMarkingGrid(updated);
   };
 
-  return (
-    <DashboardLayout title="Mark Daily Attendance">
-      
-      {/* Save Success Alert */}
-      {isSaved && (
-        <div className="mb-6 p-4 rounded-2xl bg-green-50 border border-green-150 text-green-800 flex items-center shadow-xs page-enter">
-          <CheckCircle className="h-5.5 w-5.5 mr-2.5 text-green-600" />
-          <span className="text-sm font-semibold">Attendance sheet saved successfully! Redirecting to Dashboard...</span>
-        </div>
-      )}
+  // Filter users based on search input
+  const filteredUsers = useMemo(() => {
+    return users.filter(user => {
+      const q = searchQuery.toLowerCase().trim();
+      const fullName = `${user.firstName} ${user.middleName || ''} ${user.lastName}`.toLowerCase();
+      return !q || 
+        fullName.includes(q) || 
+        user.mobile.includes(q);
+    });
+  }, [users, searchQuery]);
 
-      {/* Grid of Controls: Calendar on Left, Quick Actions on Right */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-        
-        {/* Date Selector block */}
-        <Card title="Date Selection" subtitle="Select the calendar date to mark or edit logs" className="lg:col-span-1">
-          <div className="space-y-4 mt-3">
-            <div className="flex items-center space-x-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-100">
-              <Calendar className="h-5 w-5 text-brand-orange-500" />
-              <input
-                type="date"
-                value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
-                max={dayjs().format('YYYY-MM-DD')} // Can't mark future dates
-                className="bg-transparent border-none text-slate-800 text-sm font-bold focus:outline-none w-full cursor-pointer"
-              />
-            </div>
-            <p className="text-[10px] text-slate-400 leading-normal">
-              💡 Dates already marked will display their logs automatically. You can edit them and click save to overwrite records.
+  // Real-time Summary Counters
+  const summary = useMemo(() => {
+    let present = 0;
+    let absent = 0;
+    users.forEach(user => {
+      const status = markingGrid[user.id] || 'Absent';
+      if (status === 'Present') present++;
+      else absent++;
+    });
+    return { present, absent };
+  }, [markingGrid, users]);
+
+  const handleSave = async () => {
+    const finalRecords = {};
+    users.forEach(user => {
+      finalRecords[user.id] = markingGrid[user.id] || 'Absent';
+    });
+
+    console.log("handleSave: Saving attendance for", selectedDate, "with records:", finalRecords);
+    try {
+      await saveAttendance(selectedDate, finalRecords);
+      console.log("handleSave: saveAttendance completed successfully.");
+      setIsSaved(true);
+      console.log("handleSave: Set isSaved state to true.");
+    } catch (err) {
+      console.error("handleSave: Error calling saveAttendance:", err);
+    }
+
+    setTimeout(() => {
+      console.log("handleSave: Timeout finished. Resetting isSaved.");
+      setIsSaved(false);
+    }, 5000); // Hide popup after 5 seconds, remaining on the page
+  };
+
+  console.log("AttendanceMarking Render: isSaved =", isSaved);
+
+  return (
+    <DashboardLayout title="Mark Attendance">
+      
+      {/* Save Success Toast */}
+      {isSaved && createPortal(
+        <div 
+          style={{
+            position: 'fixed',
+            top: '24px',
+            right: '24px',
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '14px',
+            backgroundColor: '#ffffff',
+            border: '1px solid #f1f5f9',
+            padding: '16px',
+            borderRadius: '16px',
+            boxShadow: '0 12px 36px rgba(0, 0, 0, 0.15)',
+            maxWidth: '380px',
+            width: 'calc(100% - 48px)',
+          }}
+          className="toast-enter"
+        >
+          <div style={{
+            display: 'flex',
+            height: '40px',
+            width: '40px',
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderRadius: '9999px',
+            backgroundColor: '#ecfdf5',
+            color: '#10b981',
+            flexShrink: 0
+          }}>
+            <CheckCircle className="h-5.5 w-5.5" />
+          </div>
+          <div style={{ flex: 1, textAlign: 'left' }}>
+            <p style={{ margin: 0, fontSize: '14px', fontWeight: 'bold', color: '#1e293b' }}>
+              Attendance saved.
+            </p>
+            <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: '#64748b', fontWeight: '500' }}>
+              Successfully synced to the system.
             </p>
           </div>
-        </Card>
+        </div>,
+        document.body
+      )}
 
-        {/* Quick Operations block */}
-        <Card title="Quick Selection Helpers" subtitle="Batch updates for all active youth Yuvaks" className="lg:col-span-2">
-          <div className="flex flex-wrap gap-3 mt-4">
-            <Button
-              variant="secondary"
-              icon={Check}
-              onClick={() => markAll('present')}
-              className="text-xs py-2 bg-green-50 hover:bg-green-100 text-green-700 border-green-200 cursor-pointer"
-            >
-              Mark All Present
-            </Button>
-            <Button
-              variant="secondary"
-              icon={X}
-              onClick={() => markAll('absent')}
-              className="text-xs py-2 bg-red-50 hover:bg-red-100 text-red-700 border-red-200 cursor-pointer"
-            >
-              Mark All Absent
-            </Button>
-            <Button
-              variant="secondary"
-              icon={Sparkles}
-              onClick={() => markAll('leave')}
-              className="text-xs py-2 bg-yellow-50 hover:bg-yellow-100 text-yellow-700 border-yellow-200 cursor-pointer"
-            >
-              Mark All On Leave
-            </Button>
-            <Button
-              variant="ghost"
-              onClick={() => {
-                const cleared = {};
-                activeUsers.forEach(u => cleared[u.id] = null);
-                setMarkingGrid(cleared);
-              }}
-              className="text-xs py-2 cursor-pointer"
-            >
-              Reset Sheet
-            </Button>
+      {/* Header controls (Title & Date picker) */}
+      <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center mb-6">
+        {/* Left: Title & Subtitle */}
+        <div className="flex items-start">
+          <Calendar className="h-8 w-8 text-[#FF7A3C] mr-3 mt-0.5 flex-shrink-0" />
+          <div>
+            <h2 className="text-3xl font-bold text-[#2C1F16] font-serif leading-tight">
+              Mark Attendance
+            </h2>
+            <p className="text-[#8C8276] text-sm mt-1.5 font-medium">
+              Quickly record today's sabha attendance
+            </p>
           </div>
-        </Card>
+        </div>
 
+        {/* Right: Date Picker Box */}
+        <div className="relative flex items-center bg-white border border-[#E5E0D8] rounded-2xl px-4 py-2 hover:border-[#FF7A3C] transition-colors cursor-pointer shadow-xs">
+          <input
+            type="date"
+            value={selectedDate}
+            onChange={(e) => setSelectedDate(e.target.value)}
+            max={dayjs().format('YYYY-MM-DD')}
+            className="bg-transparent border-none text-slate-700 text-sm font-semibold focus:outline-none cursor-pointer"
+          />
+        </div>
       </div>
 
-      {/* Attendance Sheet Card */}
-      <Card padded={false} className="overflow-hidden border border-slate-100 shadow-sm mb-6">
-        <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/20 flex justify-between items-center">
-          <div>
-            <h3 className="text-sm font-bold text-slate-700">Attendance Sheet</h3>
-            <p className="text-[10px] text-slate-400 mt-0.5">Active Yuvaks: {activeUsers.length}</p>
-          </div>
-          <span className="text-[11px] font-bold text-slate-600 bg-white border border-slate-100 px-3 py-1 rounded-xl shadow-xs">
-            📅 {dayjs(selectedDate).format('dddd, MMMM DD, YYYY')}
-          </span>
+      {/* 3 Stats Metrics Cards */}
+      <div className="grid grid-cols-3 gap-3 sm:gap-5 mb-6">
+        {/* Total card */}
+        <div className="bg-white border border-[#E5E0D8]/60 shadow-[0_8px_20px_rgba(223,215,202,0.15)] rounded-2xl p-3 sm:p-5 text-center flex flex-col justify-center min-h-[84px] sm:min-h-[96px]">
+          <span className="text-[10px] sm:text-xs font-semibold text-[#8C8276] tracking-wide block">Total</span>
+          <span className="text-xl sm:text-3xl font-bold text-[#2C1F16] mt-1 block sm:mt-1.5">{users.length}</span>
         </div>
 
-        {/* Table representation (Visible on desktop & tablet >= 768px) */}
-        <div className="hidden md:block overflow-x-auto">
-          <table className="min-w-full divide-y divide-slate-100">
-            <thead className="bg-slate-50/30">
-              <tr>
-                <th className="px-6 py-3.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Yuvak Details</th>
-                <th className="px-6 py-3.5 text-center text-[10px] font-bold text-slate-500 uppercase tracking-wider">Present</th>
-                <th className="px-6 py-3.5 text-center text-[10px] font-bold text-slate-500 uppercase tracking-wider">Absent</th>
-                <th className="px-6 py-3.5 text-center text-[10px] font-bold text-slate-500 uppercase tracking-wider">Leave</th>
-                <th className="px-6 py-3.5 text-right text-[10px] font-bold text-slate-500 uppercase tracking-wider pr-8">Status Info</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-slate-100">
-              {activeUsers.length > 0 ? (
-                activeUsers.map((user) => {
-                  const currentStatus = markingGrid[user.id];
-                  return (
-                    <tr key={user.id} className="hover:bg-slate-50/30 transition-colors">
-                      <td className="px-6 py-3.5 whitespace-nowrap">
-                        <div className="flex items-center space-x-3.5">
-                          <Avatar src={user.photo} name={user.name} size="sm" />
-                          <div>
-                            <div className="text-xs font-bold text-slate-800">{user.name}</div>
-                            <div className="text-[10px] text-slate-400 font-semibold">{user.mobile}</div>
-                          </div>
-                        </div>
-                      </td>
-                      
-                      {/* Present Radio */}
-                      <td className="px-6 py-3.5 text-center whitespace-nowrap">
-                        <label className="inline-flex items-center justify-center p-2 rounded-xl hover:bg-green-50 transition-colors cursor-pointer">
-                          <input
-                            type="radio"
-                            name={`attendance-${user.id}`}
-                            checked={currentStatus === 'present'}
-                            onChange={() => handleMark(user.id, 'present')}
-                            className="h-5 w-5 rounded-full border-slate-300 text-green-500 focus:ring-green-400 cursor-pointer"
-                          />
-                        </label>
-                      </td>
-
-                      {/* Absent Radio */}
-                      <td className="px-6 py-3.5 text-center whitespace-nowrap">
-                        <label className="inline-flex items-center justify-center p-2 rounded-xl hover:bg-red-50 transition-colors cursor-pointer">
-                          <input
-                            type="radio"
-                            name={`attendance-${user.id}`}
-                            checked={currentStatus === 'absent'}
-                            onChange={() => handleMark(user.id, 'absent')}
-                            className="h-5 w-5 rounded-full border-slate-300 text-red-500 focus:ring-red-400 cursor-pointer"
-                          />
-                        </label>
-                      </td>
-
-                      {/* Leave Radio */}
-                      <td className="px-6 py-3.5 text-center whitespace-nowrap">
-                        <label className="inline-flex items-center justify-center p-2 rounded-xl hover:bg-yellow-50 transition-colors cursor-pointer">
-                          <input
-                            type="radio"
-                            name={`attendance-${user.id}`}
-                            checked={currentStatus === 'leave'}
-                            onChange={() => handleMark(user.id, 'leave')}
-                            className="h-5 w-5 rounded-full border-slate-300 text-yellow-500 focus:ring-yellow-400 cursor-pointer"
-                          />
-                        </label>
-                      </td>
-
-                      {/* Live status badge */}
-                      <td className="px-6 py-3.5 text-right whitespace-nowrap pr-8">
-                        {currentStatus ? (
-                          <Badge variant={currentStatus}>{currentStatus}</Badge>
-                        ) : (
-                          <span className="text-[10px] font-semibold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full uppercase">Unmarked</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })
-              ) : (
-                <tr>
-                  <td colSpan={5} className="px-6 py-12 text-center text-xs text-slate-400 font-semibold uppercase tracking-wider">
-                    No active Yuvaks registered. Please register Yuvaks first.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+        {/* Present card */}
+        <div className="bg-[#E6F4EA] border border-[#A7F3D0]/60 shadow-[0_8px_20px_rgba(223,215,202,0.08)] rounded-2xl p-3 sm:p-5 text-center flex flex-col justify-center min-h-[84px] sm:min-h-[96px]">
+          <span className="text-[10px] sm:text-xs font-semibold text-emerald-600 tracking-wide block">Present</span>
+          <span className="text-xl sm:text-3xl font-bold text-[#10B981] mt-1 block sm:mt-1.5">{summary.present}</span>
         </div>
 
-        {/* Card representation (Visible on mobile/phones < 768px) */}
-        <div className="md:hidden divide-y divide-slate-100 bg-white">
-          {activeUsers.length > 0 ? (
-            activeUsers.map((user) => {
-              const currentStatus = markingGrid[user.id];
+        {/* Absent card */}
+        <div className="bg-[#FCE8E6] border border-[#FECDD3]/60 shadow-[0_8px_20px_rgba(223,215,202,0.08)] rounded-2xl p-3 sm:p-5 text-center flex flex-col justify-center min-h-[84px] sm:min-h-[96px]">
+          <span className="text-[10px] sm:text-xs font-semibold text-red-500 tracking-wide block">Absent</span>
+          <span className="text-xl sm:text-3xl font-bold text-red-500 mt-1 block sm:mt-1.5">{summary.absent}</span>
+        </div>
+      </div>
+
+      {/* Search and Quick Action Bar */}
+      <div className="bg-white rounded-[20px] border border-[#E5E0D8]/60 shadow-xs p-4 flex flex-col lg:flex-row gap-4 items-center justify-between mb-6">
+        {/* Search Input */}
+        <div className="relative w-full lg:max-w-md">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#8C8276]" />
+          <input
+            type="text"
+            placeholder="Search Yuvak..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 border border-[#E5E0D8] rounded-xl text-sm text-[#2C1F16] placeholder-[#B0A89E] focus:outline-none focus:border-[#FF7A3C] transition-colors"
+          />
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex items-center gap-3 w-full lg:w-auto justify-end">
+          <button
+            type="button"
+            onClick={() => markAll('Present')}
+            className="px-3.5 py-2 border border-[#10B981] bg-white rounded-xl text-xs font-semibold text-[#10B981] hover:bg-[#E6F4EA] transition-all flex items-center gap-1.5 cursor-pointer outline-none"
+          >
+            <Check className="h-3.5 w-3.5" />
+            All Present
+          </button>
+
+          <button
+            type="button"
+            onClick={() => markAll('Absent')}
+            className="px-3.5 py-2 border border-[#F43F5E] bg-white rounded-xl text-xs font-semibold text-[#F43F5E] hover:bg-[#FCE8E6] transition-all flex items-center gap-1.5 cursor-pointer outline-none"
+          >
+            <X className="h-3.5 w-3.5" />
+            All Absent
+          </button>
+
+          <button
+            type="button"
+            onClick={resetSelection}
+            className="px-3.5 py-2 border border-[#8C8276] bg-white rounded-xl text-xs font-semibold text-[#8C8276] hover:bg-slate-50 transition-all flex items-center gap-1.5 cursor-pointer outline-none"
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+            Reset
+          </button>
+        </div>
+      </div>
+
+      {/* Yuvak List Container Card */}
+      <div className="bg-white rounded-[28px] shadow-[0_16px_40px_rgba(223,215,202,0.3)] border border-[#F2ECE4]/30 overflow-hidden mb-6">
+        <div className="divide-y divide-[#F2ECE4]/60">
+          {filteredUsers.length > 0 ? (
+            filteredUsers.map((user) => {
+              const currentStatus = markingGrid[user.id] || 'Absent';
+              const fullName = [user.firstName, user.middleName, user.lastName].filter(Boolean).join(' ');
               return (
-                <div key={user.id} className="p-4 flex flex-col space-y-3 hover:bg-slate-50/20 transition-colors">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      <Avatar src={user.photo} name={user.name} size="sm" />
-                      <div>
-                        <div className="text-xs font-bold text-slate-800">{user.name}</div>
-                        <div className="text-[10px] text-slate-400 font-semibold">{user.mobile}</div>
-                      </div>
-                    </div>
-                    {currentStatus ? (
-                      <Badge variant={currentStatus}>{currentStatus}</Badge>
-                    ) : (
-                      <span className="text-[10px] font-semibold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full uppercase">Unmarked</span>
-                    )}
+                <div key={user.id} className="flex items-center justify-between py-4 border-b border-[#F2ECE4]/60 hover:bg-slate-50/20 transition-colors px-6 sm:px-8">
+                  {/* Left: Avatar and Name */}
+                  <div className="flex items-center space-x-4">
+                    <Avatar src={user.photoUrl || user.photo} name={fullName} size="sm" />
+                    <span className="text-sm font-semibold text-[#2C1F16]">
+                      {fullName}
+                    </span>
                   </div>
-
-                  {/* Status Toggles grid */}
-                  <div className="grid grid-cols-3 gap-2">
+                  
+                  {/* Right: Toggle Switch A / P */}
+                  <div className="flex items-center space-x-3.5">
+                    <span className={`text-xs font-bold transition-colors ${currentStatus === 'Absent' ? 'text-red-500' : 'text-slate-400'}`}>
+                      A
+                    </span>
                     <button
                       type="button"
-                      onClick={() => handleMark(user.id, 'present')}
-                      className={`
-                        py-2 text-center text-xs font-bold rounded-xl border transition-all cursor-pointer active:scale-95
-                        ${currentStatus === 'present'
-                          ? 'bg-green-50 border-green-300 text-green-700 font-extrabold shadow-sm'
-                          : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}
-                      `}
+                      onClick={() => handleToggle(user.id)}
+                      className={`relative inline-flex h-6.5 w-12 items-center rounded-full transition-colors focus:outline-none cursor-pointer ${
+                        currentStatus === 'Present' ? 'bg-[#10B981]' : 'bg-[#CBD5E1]'
+                      }`}
                     >
-                      Present
+                      <span
+                        className={`inline-block h-4.5 w-4.5 transform rounded-full bg-white transition-transform ${
+                          currentStatus === 'Present' ? 'translate-x-6.5' : 'translate-x-0.5'
+                        }`}
+                      />
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => handleMark(user.id, 'absent')}
-                      className={`
-                        py-2 text-center text-xs font-bold rounded-xl border transition-all cursor-pointer active:scale-95
-                        ${currentStatus === 'absent'
-                          ? 'bg-red-50 border-red-300 text-red-700 font-extrabold shadow-sm'
-                          : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}
-                      `}
-                    >
-                      Absent
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleMark(user.id, 'leave')}
-                      className={`
-                        py-2 text-center text-xs font-bold rounded-xl border transition-all cursor-pointer active:scale-95
-                        ${currentStatus === 'leave'
-                          ? 'bg-yellow-50 border-yellow-300 text-yellow-700 font-extrabold shadow-sm'
-                          : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}
-                      `}
-                    >
-                      Leave
-                    </button>
+                    <span className={`text-xs font-bold transition-colors ${currentStatus === 'Present' ? 'text-emerald-600' : 'text-slate-400'}`}>
+                      P
+                    </span>
                   </div>
                 </div>
               );
             })
           ) : (
-            <div className="p-8 text-center text-xs text-slate-400 font-bold uppercase">No active youth Yuvaks registered</div>
+            <div className="p-12 text-center text-sm text-[#8C8276] font-medium">
+              No Yuvaks found matching your search.
+            </div>
           )}
         </div>
+      </div>
 
-        {/* Action Panel Footer */}
-        <div className="flex items-center justify-end px-6 py-4.5 bg-slate-50 border-t border-slate-100">
-          <Button
-            variant="primary"
-            icon={Save}
-            onClick={handleSave}
-            className="py-3 px-6 cursor-pointer"
-          >
-            Save Attendance
-          </Button>
-        </div>
-
-      </Card>
+      {/* Save Action Button */}
+      <div className="pt-2">
+        <button
+          onClick={handleSave}
+          className="w-full py-3.5 bg-[#FF7A3C] hover:bg-[#E66327] active:scale-[0.98] transition-all text-white font-semibold rounded-2xl text-base shadow-sm focus:outline-none cursor-pointer flex justify-center items-center gap-2"
+        >
+          <Save className="h-5 w-5" />
+          Save Attendance
+        </button>
+      </div>
 
     </DashboardLayout>
   );

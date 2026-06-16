@@ -3,25 +3,19 @@ import { useForm } from 'react-hook-form';
 import { useApp } from '../context/AppContext';
 import { useNavigation } from '../context/NavigationContext';
 import AuthLayout from '../layouts/AuthLayout';
-import Button from '../components/Button';
-import Input from '../components/Input';
-import Card from '../components/Card';
-import { Eye, EyeOff, Lock, Mail, User, ShieldCheck } from 'lucide-react';
 
 export const Login = () => {
   const { login, registerAdmin } = useApp();
   const { navigateTo } = useNavigation();
-  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [isRegistering, setIsRegistering] = useState(false);
 
-  // Separate forms for Login and Signup
+  // Forms for Login and Signup
   const { register: registerLogin, handleSubmit: handleSubmitLogin, formState: { errors: errorsLogin } } = useForm({
     defaultValues: {
       email: '',
       password: '',
-      rememberMe: true
     }
   });
 
@@ -31,7 +25,7 @@ export const Login = () => {
       lastName: '',
       email: '',
       password: '',
-      secretCode: ''
+      secretKey: ''
     }
   });
 
@@ -45,17 +39,17 @@ export const Login = () => {
       if (result.success) {
         navigateTo('dashboard');
       } else {
-        setErrorMessage(result.message);
+        setErrorMessage(result.message || 'Invalid email or password.');
       }
     } catch (err) {
       setIsLoading(false);
-      setErrorMessage('An unexpected database connection error occurred. Please try again.');
+      setErrorMessage('An unexpected error occurred. Please try again.');
     }
   };
 
   const onSignupSubmit = async (data) => {
-    if (data.secretCode !== '1921') {
-      setErrorMessage('Invalid secret code. Account cannot be created.');
+    if (data.secretKey !== '1921') {
+      setErrorMessage('Invalid Secret Key. You are not authorized to create an account.');
       return;
     }
     setIsLoading(true);
@@ -70,80 +64,117 @@ export const Login = () => {
       });
       setIsLoading(false);
       if (result.success) {
-        alert('Account created successfully! You can now log in with your email and password.');
+        alert('Account created successfully! You can now log in.');
         setIsRegistering(false);
         resetSignup();
       } else {
-        setErrorMessage(result.message);
+        setErrorMessage(result.message || 'Registration failed.');
       }
     } catch (err) {
       setIsLoading(false);
-      setErrorMessage('An unexpected registration database error occurred. Please try again.');
+      setErrorMessage('An unexpected registration error occurred. Please try again.');
     }
-  };
-
-  const handleToggleRegister = () => {
-    setIsRegistering(true);
-    setErrorMessage('');
-    resetSignup();
-  };
-
-  const handleCancelRegister = () => {
-    setIsRegistering(false);
-    setErrorMessage('');
   };
 
   return (
     <AuthLayout>
-      <Card padded={false} className="overflow-hidden border border-slate-100 shadow-xl">
-        <div className="p-8 sm:p-10">
-          
-          {/* Top Form Header with Logo */}
-          <div className="flex flex-col items-center mb-8 text-center">
-            <div className="h-12 w-12 bg-brand-orange-50 rounded-2xl flex items-center justify-center border border-brand-orange-100 shadow-xs mb-3">
-              <img src="/logo.png" alt="Sarvoday Logo" className="h-8.5 w-8.5 object-contain" />
-            </div>
-            <h2 className="text-xl font-bold text-slate-800 tracking-tight">Sarvoday Yuvak Mandal</h2>
-            <p className="text-xs text-slate-500 mt-1">
-              {isRegistering ? 'Create a coordinator account to get started' : 'Sign in to manage youth attendance & directory'}
-            </p>
+      {/* Logo and Header above the Card */}
+      <div className="flex flex-col items-center mb-8 text-center">
+        <div className="h-28 w-28 rounded-full overflow-hidden mb-5 flex items-center justify-center bg-white border border-[#E5E0D8] shadow-xs">
+          <img 
+            src="/logo.png?v=1" 
+            alt="Sarvoday Nagar Yuvak Mandal Logo" 
+            className="h-full w-full object-cover scale-[1.12]" 
+          />
+        </div>
+        <h2 className="text-3xl font-bold text-[#2C1F16] font-serif leading-tight">
+          Sarvoday Nagar Yuvak Mandal
+        </h2>
+        <p className="text-[#8C8276] text-sm mt-3 font-medium">
+          Attendance Management for our weekly sabhas
+        </p>
+      </div>
+
+      {/* Main Form Card */}
+      <div className="bg-white rounded-[28px] shadow-[0_16px_40px_rgba(223,215,202,0.4)] p-8 sm:p-10 mb-6 border border-[#F2ECE4]/30">
+        
+        {/* Custom Pill Tab Switcher */}
+        <div className="bg-[#F3EEE7] p-1 rounded-full flex mb-6">
+          <button
+            type="button"
+            onClick={() => {
+              setIsRegistering(false);
+              setErrorMessage('');
+            }}
+            className={`flex-1 text-center py-2.5 text-sm font-medium rounded-full transition-all duration-200 cursor-pointer ${
+              !isRegistering
+                ? 'bg-white text-[#2C1F16] shadow-sm'
+                : 'text-[#8C8276] hover:text-[#2C1F16]'
+            }`}
+          >
+            Sign In
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setIsRegistering(true);
+              setErrorMessage('');
+            }}
+            className={`flex-1 text-center py-2.5 text-sm font-medium rounded-full transition-all duration-200 cursor-pointer ${
+              isRegistering
+                ? 'bg-white text-[#2C1F16] shadow-sm'
+                : 'text-[#8C8276] hover:text-[#2C1F16]'
+            }`}
+          >
+            Sign Up
+          </button>
+        </div>
+
+        {errorMessage && (
+          <div className="mb-5 p-3.5 rounded-2xl bg-red-50 border border-red-150 text-xs text-red-600 font-medium leading-relaxed">
+            {errorMessage}
           </div>
+        )}
 
-          {errorMessage && (
-            <div className="mb-5 p-3 rounded-xl bg-red-50 border border-red-150 text-xs text-red-600 font-medium tracking-wide">
-              {errorMessage}
-            </div>
-          )}
-
-          {!isRegistering ? (
-            <form onSubmit={handleSubmitLogin(onSubmitLogin)} className="space-y-5">
-              {/* Email Field */}
-              <Input
-                label="Email Address"
+        {!isRegistering ? (
+          <form onSubmit={handleSubmitLogin(onSubmitLogin)} className="space-y-5">
+            {/* Email ID Field */}
+            <div className="w-full">
+              <label className="block text-sm font-medium text-[#2C1F16] mb-1.5">
+                Email ID
+              </label>
+              <input
                 type="email"
-                name="email"
-                placeholder="e.g. ketan@sarvoday.org"
-                icon={Mail}
-                error={errorsLogin.email}
+                placeholder="you@example.com"
+                className={`w-full px-4.5 py-3 rounded-2xl border bg-white text-sm text-[#2C1F16] placeholder-[#B0A89E] transition-all duration-200 outline-none
+                  ${errorsLogin.email ? 'border-red-400 focus:border-red-500' : 'border-[#E5E0D8] focus:border-[#FF7A3C] focus:ring-1 focus:ring-[#FF7A3C]'}
+                `}
                 {...registerLogin('email', { 
-                  required: 'Email address is required',
+                  required: 'Email ID is required',
                   pattern: {
                     value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
                     message: 'Invalid email address'
                   }
                 })}
               />
+              {errorsLogin.email && (
+                <span className="text-xs text-red-500 mt-1 block">
+                  {errorsLogin.email.message}
+                </span>
+              )}
+            </div>
 
-              {/* Password Field */}
-              <Input
-                label="Password"
-                type={showPassword ? 'text' : 'password'}
-                name="password"
+            {/* Password Field */}
+            <div className="w-full">
+              <label className="block text-sm font-medium text-[#2C1F16] mb-1.5">
+                Password
+              </label>
+              <input
+                type="password"
                 placeholder="••••••••"
-                icon={Lock}
-                rightIcon={showPassword ? <EyeOff className="h-4.5 w-4.5" /> : <Eye className="h-4.5 w-4.5" />}
-                onRightIconClick={() => setShowPassword(!showPassword)}
-                error={errorsLogin.password}
+                className={`w-full px-4.5 py-3 rounded-2xl border bg-white text-sm text-[#2C1F16] placeholder-[#B0A89E] transition-all duration-200 outline-none
+                  ${errorsLogin.password ? 'border-red-400 focus:border-red-500' : 'border-[#E5E0D8] focus:border-[#FF7A3C] focus:ring-1 focus:ring-[#FF7A3C]'}
+                `}
                 {...registerLogin('password', { 
                   required: 'Password is required',
                   minLength: {
@@ -152,103 +183,114 @@ export const Login = () => {
                   }
                 })}
               />
+              {errorsLogin.password && (
+                <span className="text-xs text-red-500 mt-1 block">
+                  {errorsLogin.password.message}
+                </span>
+              )}
+            </div>
 
-              {/* Remember & Forgot Row */}
-              <div className="flex items-center justify-between">
-                <label className="flex items-center text-xs text-slate-600 font-medium select-none cursor-pointer">
-                  <input 
-                    type="checkbox" 
-                    className="mr-2 h-4 w-4 rounded-md border-slate-300 text-brand-orange-500 focus:ring-brand-orange-300" 
-                    {...registerLogin('rememberMe')}
-                  />
-                  Remember Me
-                </label>
-                
-                <button 
-                  type="button" 
-                  className="text-xs font-semibold text-brand-orange-600 hover:text-brand-orange-500 cursor-pointer"
-                  onClick={() => alert('Forgot Password simulator triggered. Please contact your coordinator to reset.')}
-                >
-                  Forgot Password?
-                </button>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="space-y-3 mt-4">
-                <Button
-                  type="submit"
-                  variant="primary"
-                  fullWidth
-                  isLoading={isLoading}
-                  className="py-3"
-                >
-                  Sign In
-                </Button>
-
-                <Button
-                  type="button"
-                  variant="secondary"
-                  fullWidth
-                  onClick={handleToggleRegister}
-                  className="py-3"
-                >
-                  Create Account
-                </Button>
-              </div>
-            </form>
-          ) : (
-            <form onSubmit={handleSubmitSignup(onSignupSubmit)} className="space-y-4">
-              {/* First Name Field */}
-              <Input
-                label="First Name"
+            {/* Sign In Button */}
+            <div className="pt-2">
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full py-3.5 bg-[#FF7A3C] hover:bg-[#E66327] active:scale-[0.98] transition-all text-white font-semibold rounded-2xl text-base shadow-sm focus:outline-none cursor-pointer flex justify-center items-center"
+              >
+                {isLoading ? (
+                  <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                ) : (
+                  'Sign In'
+                )}
+              </button>
+            </div>
+          </form>
+        ) : (
+          <form onSubmit={handleSubmitSignup(onSignupSubmit)} className="space-y-4">
+            {/* First Name Field */}
+            <div className="w-full">
+              <label className="block text-sm font-medium text-[#2C1F16] mb-1.5">
+                First Name
+              </label>
+              <input
                 type="text"
-                name="firstName"
                 placeholder="e.g. Ketan"
-                icon={User}
-                error={errorsSignup.firstName}
+                className={`w-full px-4.5 py-3 rounded-2xl border bg-white text-sm text-[#2C1F16] placeholder-[#B0A89E] transition-all duration-200 outline-none
+                  ${errorsSignup.firstName ? 'border-red-400 focus:border-red-500' : 'border-[#E5E0D8] focus:border-[#FF7A3C] focus:ring-1 focus:ring-[#FF7A3C]'}
+                `}
                 {...registerSignup('firstName', { 
                   required: 'First name is required'
                 })}
               />
+              {errorsSignup.firstName && (
+                <span className="text-xs text-red-500 mt-1 block">
+                  {errorsSignup.firstName.message}
+                </span>
+              )}
+            </div>
 
-              {/* Last Name Field */}
-              <Input
-                label="Last Name"
+            {/* Last Name Field */}
+            <div className="w-full">
+              <label className="block text-sm font-medium text-[#2C1F16] mb-1.5">
+                Last Name
+              </label>
+              <input
                 type="text"
-                name="lastName"
                 placeholder="e.g. Vyas"
-                icon={User}
-                error={errorsSignup.lastName}
+                className={`w-full px-4.5 py-3 rounded-2xl border bg-white text-sm text-[#2C1F16] placeholder-[#B0A89E] transition-all duration-200 outline-none
+                  ${errorsSignup.lastName ? 'border-red-400 focus:border-red-500' : 'border-[#E5E0D8] focus:border-[#FF7A3C] focus:ring-1 focus:ring-[#FF7A3C]'}
+                `}
                 {...registerSignup('lastName', { 
                   required: 'Last name is required'
                 })}
               />
+              {errorsSignup.lastName && (
+                <span className="text-xs text-red-500 mt-1 block">
+                  {errorsSignup.lastName.message}
+                </span>
+              )}
+            </div>
 
-              {/* Email Field */}
-              <Input
-                label="Email Address"
+            {/* Email ID Field */}
+            <div className="w-full">
+              <label className="block text-sm font-medium text-[#2C1F16] mb-1.5">
+                Email ID
+              </label>
+              <input
                 type="email"
-                name="email"
-                placeholder="e.g. ketan@sarvoday.org"
-                icon={Mail}
-                error={errorsSignup.email}
+                placeholder="coordinator@sarvoday.org"
+                className={`w-full px-4.5 py-3 rounded-2xl border bg-white text-sm text-[#2C1F16] placeholder-[#B0A89E] transition-all duration-200 outline-none
+                  ${errorsSignup.email ? 'border-red-400 focus:border-red-500' : 'border-[#E5E0D8] focus:border-[#FF7A3C] focus:ring-1 focus:ring-[#FF7A3C]'}
+                `}
                 {...registerSignup('email', { 
-                  required: 'Email address is required',
+                  required: 'Email ID is required',
                   pattern: {
                     value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
                     message: 'Invalid email address'
                   }
                 })}
               />
+              {errorsSignup.email && (
+                <span className="text-xs text-red-500 mt-1 block">
+                  {errorsSignup.email.message}
+                </span>
+              )}
+            </div>
 
-              {/* Password Field */}
-              <Input
-                label="Password"
+            {/* Password Field */}
+            <div className="w-full">
+              <label className="block text-sm font-medium text-[#2C1F16] mb-1.5">
+                Password
+              </label>
+              <input
                 type="password"
-                name="password"
                 placeholder="••••••••"
-                icon={Lock}
-                error={errorsSignup.password}
+                className={`w-full px-4.5 py-3 rounded-2xl border bg-white text-sm text-[#2C1F16] placeholder-[#B0A89E] transition-all duration-200 outline-none
+                  ${errorsSignup.password ? 'border-red-400 focus:border-red-500' : 'border-[#E5E0D8] focus:border-[#FF7A3C] focus:ring-1 focus:ring-[#FF7A3C]'}
+                `}
                 {...registerSignup('password', { 
                   required: 'Password is required',
                   minLength: {
@@ -257,47 +299,60 @@ export const Login = () => {
                   }
                 })}
               />
+              {errorsSignup.password && (
+                <span className="text-xs text-red-500 mt-1 block">
+                  {errorsSignup.password.message}
+                </span>
+              )}
+            </div>
 
-              {/* Secret Code Field */}
-              <Input
-                label="Secret Code (Security Verification)"
+            {/* Secret Key Field */}
+            <div className="w-full">
+              <label className="block text-sm font-medium text-[#2C1F16] mb-1.5">
+                Secret Key
+              </label>
+              <input
                 type="password"
-                name="secretCode"
-                placeholder="Ask your administrator for the mandal code"
-                icon={ShieldCheck}
-                error={errorsSignup.secretCode}
-                {...registerSignup('secretCode', { 
-                  required: 'Secret code is required'
+                placeholder="Enter organization secret key"
+                className={`w-full px-4.5 py-3 rounded-2xl border bg-white text-sm text-[#2C1F16] placeholder-[#B0A89E] transition-all duration-200 outline-none
+                  ${errorsSignup.secretKey ? 'border-red-400 focus:border-red-500' : 'border-[#E5E0D8] focus:border-[#FF7A3C] focus:ring-1 focus:ring-[#FF7A3C]'}
+                `}
+                {...registerSignup('secretKey', { 
+                  required: 'Secret Key is required'
                 })}
               />
+              {errorsSignup.secretKey && (
+                <span className="text-xs text-red-500 mt-1 block">
+                  {errorsSignup.secretKey.message}
+                </span>
+              )}
+            </div>
 
-              {/* Action Buttons */}
-              <div className="space-y-3 mt-5">
-                <Button
-                  type="submit"
-                  variant="primary"
-                  fullWidth
-                  isLoading={isLoading}
-                  className="py-3"
-                >
-                  Register Account
-                </Button>
+            {/* Sign Up Button */}
+            <div className="pt-2">
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full py-3.5 bg-[#FF7A3C] hover:bg-[#E66327] active:scale-[0.98] transition-all text-white font-semibold rounded-2xl text-base shadow-sm focus:outline-none cursor-pointer flex justify-center items-center"
+              >
+                {isLoading ? (
+                  <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                ) : (
+                  'Sign Up'
+                )}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
 
-                <Button
-                  type="button"
-                  variant="secondary"
-                  fullWidth
-                  onClick={handleCancelRegister}
-                  className="py-3"
-                >
-                  Back to Sign In
-                </Button>
-              </div>
-            </form>
-          )}
-
-        </div>
-      </Card>
+      {/* Footer Text */}
+      <div className="text-center text-xs text-[#8C8276] font-medium tracking-wide">
+        Jay Swaminarayan 🙏 — for Mandal volunteers only.
+      </div>
     </AuthLayout>
   );
 };

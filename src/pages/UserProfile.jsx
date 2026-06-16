@@ -2,28 +2,13 @@ import React, { useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { useNavigation } from '../context/NavigationContext';
 import DashboardLayout from '../layouts/DashboardLayout';
-import Card from '../components/Card';
 import Avatar from '../components/Avatar';
-import Badge from '../components/Badge';
-import Button from '../components/Button';
-import { 
-  ArrowLeft, 
-  Mail, 
-  Phone, 
-  MapPin, 
-  Calendar, 
-  Sparkles, 
-  CheckCircle, 
-  XCircle, 
-  HelpCircle,
-  Award
-} from 'lucide-react';
+import { X } from 'lucide-react';
 import {
-  AreaChart,
-  Area,
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
-  CartesianGrid,
   Tooltip,
   ResponsiveContainer
 } from 'recharts';
@@ -44,251 +29,191 @@ export const UserProfile = () => {
   if (!user) {
     return (
       <DashboardLayout title="Member Profile">
-        <Card className="text-center p-8">
-          <p className="text-sm text-slate-400 font-semibold uppercase">No users found in the system.</p>
-          <Button variant="primary" onClick={() => navigateTo('register')} className="mt-4 cursor-pointer">
+        <div className="max-w-xl mx-auto page-enter text-center p-8 bg-[#FAF9F6] border border-[#F2ECE4]/40 rounded-[28px] shadow-sm">
+          <p className="text-sm text-[#8C8276] font-semibold uppercase">No users found in the system.</p>
+          <button 
+            onClick={() => navigateTo('register')} 
+            className="mt-4 px-6 py-2.5 bg-[#FF7A3C] hover:bg-[#E66327] text-white font-semibold rounded-2xl cursor-pointer"
+          >
             Register a Member
-          </Button>
-        </Card>
+          </button>
+        </div>
       </DashboardLayout>
     );
   }
 
   // Get user-specific attendance details
-  const { total, presents, leaves, absents, history } = getUserStats(user.id);
+  const { total, presents, absents, history } = getUserStats(user.id);
 
-  // 1. Heatmap data: Generate 30 days grid blocks
-  const heatmapData = useMemo(() => {
-    const days = [];
-    for (let i = 29; i >= 0; i--) {
-      const dateStr = dayjs().subtract(i, 'day').format('YYYY-MM-DD');
-      const record = history.find(h => h.date === dateStr);
-      days.push({
-        date: dateStr,
-        dayNum: dayjs(dateStr).format('D'),
-        monthName: dayjs(dateStr).format('MMM'),
-        status: record ? record.status : 'unmarked'
+  // Group history by month to prepare monthly bar chart data
+  const monthlyData = useMemo(() => {
+    const months = {};
+    
+    // Group records by month code (e.g. "06" for June)
+    history.forEach(record => {
+      const monthCode = dayjs(record.date).format('MM');
+      if (!months[monthCode]) {
+        months[monthCode] = { 
+          monthName: monthCode, 
+          present: 0, 
+          absent: 0, 
+          total: 0 
+        };
+      }
+      months[monthCode].total++;
+      if (record.status === 'Present') {
+        months[monthCode].present++;
+      } else if (record.status === 'Absent') {
+        months[monthCode].absent++;
+      }
+    });
+
+    // Convert to list sorted chronologically by month code
+    const sortedList = Object.values(months).sort((a, b) => a.monthName.localeCompare(b.monthName));
+
+    // Fallback to show current month if there's no history yet
+    if (sortedList.length === 0) {
+      const currentMonth = dayjs().format('MM');
+      sortedList.push({
+        monthName: currentMonth,
+        present: 0,
+        absent: 0,
+        total: 0
       });
     }
-    return days;
+
+    return sortedList;
   }, [history]);
 
-  // 2. Personal Trend chart data (Last 10 marked days)
-  const personalChartData = useMemo(() => {
-    // Take the last 10 entries from history, reverse to chronological order
-    const last10 = [...history].slice(0, 10).reverse();
-    let cumulativePresent = 0;
-    let totalMarked = 0;
-
-    return last10.map(h => {
-      totalMarked++;
-      if (h.status === 'present' || h.status === 'leave') {
-        cumulativePresent++;
-      }
-      const score = Math.round((cumulativePresent / totalMarked) * 100);
-      return {
-        name: dayjs(h.date).format('MMM DD'),
-        Rate: score
-      };
-    });
-  }, [history]);
+  // Construct full name
+  const fullName = [user.firstName, user.middleName, user.lastName].filter(Boolean).join(' ');
 
   return (
-    <DashboardLayout title={`${user.name}'s Profile`}>
-      
-      {/* Header Back controls */}
-      <div className="mb-6">
-        <button 
-          onClick={() => navigateTo('users')}
-          className="flex items-center text-xs font-semibold text-slate-500 hover:text-slate-700 transition-colors cursor-pointer"
-        >
-          <ArrowLeft className="h-4 w-4 mr-1.5" /> Back to Member Directory
-        </button>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <DashboardLayout title={`${fullName}'s Profile`}>
+      <div className="max-w-xl mx-auto page-enter py-4">
         
-        {/* Left Card: Personal Metadata Details */}
-        <Card padded={false} className="lg:col-span-1 border border-slate-100 shadow-sm flex flex-col justify-between">
-          <div className="p-6 text-center border-b border-slate-50">
-            
-            {/* Large Avatar */}
-            <Avatar src={user.photo} name={user.name} size="2xl" className="shadow-md border-4 border-white mx-auto mb-4" />
-            <h3 className="text-lg font-bold text-slate-800 tracking-tight">{user.name}</h3>
-            
-            <div className="mt-2 flex justify-center gap-1.5">
-              <Badge variant={user.status}>{user.status}</Badge>
-              {user.gender && <Badge variant="info">{user.gender}</Badge>}
-            </div>
-
-            {user.notes && (
-              <p className="text-[11px] text-slate-500 mt-4 italic bg-slate-50 p-3 rounded-xl border border-slate-100 leading-relaxed">
-                "{user.notes}"
-              </p>
-            )}
-          </div>
-
-          {/* Contact Details List */}
-          <div className="p-6 space-y-4 flex-1">
-            <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Contact &amp; Mandal Info</h4>
-            
-            {/* Phone */}
-            <div className="flex items-start">
-              <Phone className="h-4 w-4 text-slate-400 mt-0.5 mr-3 flex-shrink-0" />
-              <div>
-                <span className="block text-[10px] text-slate-400 font-semibold uppercase">Mobile Number</span>
-                <span className="text-xs text-slate-700 font-semibold tracking-wide">{user.mobile}</span>
-              </div>
-            </div>
-
-            {/* Email */}
-            <div className="flex items-start">
-              <Mail className="h-4 w-4 text-slate-400 mt-0.5 mr-3 flex-shrink-0" />
-              <div>
-                <span className="block text-[10px] text-slate-400 font-semibold uppercase">Email Address</span>
-                <span className="text-xs text-slate-700 font-semibold truncate block max-w-[180px]">{user.email}</span>
-              </div>
-            </div>
-
-            {/* Address */}
-            <div className="flex items-start">
-              <MapPin className="h-4 w-4 text-slate-400 mt-0.5 mr-3 flex-shrink-0" />
-              <div>
-                <span className="block text-[10px] text-slate-400 font-semibold uppercase">Address</span>
-                <span className="text-xs text-slate-700 font-medium leading-relaxed block">{user.address}</span>
-              </div>
-            </div>
-
-            {/* Join Date */}
-            <div className="flex items-start">
-              <Calendar className="h-4 w-4 text-slate-400 mt-0.5 mr-3 flex-shrink-0" />
-              <div>
-                <span className="block text-[10px] text-slate-400 font-semibold uppercase">Mandal Joining Date</span>
-                <span className="text-xs text-slate-700 font-semibold">{dayjs(user.joiningDate).format('MMMM DD, YYYY')}</span>
-              </div>
-            </div>
-
-          </div>
-        </Card>
-
-        {/* Right Stack: Stats Summary, Heatmap, Chart */}
-        <div className="lg:col-span-2 space-y-6">
+        {/* Main Details Card */}
+        <div className="bg-[#FAF9F6] rounded-[28px] border border-[#F2ECE4]/40 shadow-[0_16px_40px_rgba(223,215,202,0.3)] p-6 sm:p-8 relative">
           
-          {/* 1. Metric Summaries */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            
-            {/* Metric: Attendance score */}
-            <Card padded={false} className="p-4.5 text-center flex flex-col justify-center">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Aggregate %</span>
-              <span className={`text-2xl font-extrabold mt-1 block ${
-                user.attendancePct >= 90 ? 'text-green-600' :
-                user.attendancePct >= 75 ? 'text-blue-600' : 'text-yellow-600'
-              }`}>
-                {user.attendancePct}%
-              </span>
-            </Card>
+          {/* Close Icon Button */}
+          <button
+            onClick={() => navigateTo('users')}
+            className="absolute top-5 right-5 w-9 h-9 rounded-full border border-[#FF7A3C] bg-white flex items-center justify-center text-[#FF7A3C] hover:bg-orange-50 transition-colors shadow-xs cursor-pointer"
+            title="Close Profile"
+          >
+            <X className="h-4.5 w-4.5" />
+          </button>
 
-            {/* Metric: Presents */}
-            <Card padded={false} className="p-4.5 text-center flex flex-col justify-center border-l-4 border-l-green-400">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center justify-center">
-                <CheckCircle className="h-3 w-3 mr-1 text-green-500" /> Present Days
-              </span>
-              <span className="text-2xl font-extrabold text-slate-800 mt-1 block">{presents}</span>
-            </Card>
+          {/* User Name in Serif */}
+          <h2 className="text-2xl font-bold text-[#2C1F16] font-serif mb-6 pr-10">
+            {fullName}
+          </h2>
 
-            {/* Metric: Leaves */}
-            <Card padded={false} className="p-4.5 text-center flex flex-col justify-center border-l-4 border-l-yellow-400">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center justify-center">
-                <Sparkles className="h-3 w-3 mr-1 text-yellow-500" /> Leave Days
-              </span>
-              <span className="text-2xl font-extrabold text-slate-800 mt-1 block">{leaves}</span>
-            </Card>
-
-            {/* Metric: Absents */}
-            <Card padded={false} className="p-4.5 text-center flex flex-col justify-center border-l-4 border-l-red-400">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center justify-center">
-                <XCircle className="h-3 w-3 mr-1 text-red-500" /> Absent Days
-              </span>
-              <span className="text-2xl font-extrabold text-slate-800 mt-1 block">{absents}</span>
-            </Card>
-
-          </div>
-
-          {/* 2. Heatmap-Style Calendar Grid (30 days contribution style) */}
-          <Card title="Attendance Heatmap Calendar" subtitle="Visual record of the past 30 days status tracker">
-            
-            <div className="grid grid-cols-5 sm:grid-cols-10 gap-2 mt-4">
-              {heatmapData.map((day) => {
-                const colors = {
-                  present: 'bg-green-100 hover:bg-green-200 border-green-200 text-green-800',
-                  absent: 'bg-red-100 hover:bg-red-200 border-red-200 text-red-800',
-                  leave: 'bg-yellow-100 hover:bg-yellow-200 border-yellow-200 text-yellow-800',
-                  unmarked: 'bg-slate-50 hover:bg-slate-100 border-slate-100 text-slate-400'
-                };
-                
-                return (
-                  <div
-                    key={day.date}
-                    className={`
-                      heatmap-cell border rounded-lg p-2 text-center flex flex-col justify-between shadow-xs select-none
-                      ${colors[day.status]}
-                    `}
-                    title={`${day.date}: ${day.status.toUpperCase()}`}
-                  >
-                    <span className="text-[9px] font-bold uppercase tracking-wider">{day.monthName}</span>
-                    <span className="text-sm font-extrabold mt-0.5">{day.dayNum}</span>
-                    <span className="text-[8px] font-semibold uppercase tracking-wider mt-1 block">
-                      {day.status === 'present' ? '✓' :
-                       day.status === 'absent' ? '✗' :
-                       day.status === 'leave' ? 'L' : '-'}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Heatmap Legends */}
-            <div className="flex flex-wrap gap-4 mt-6 pt-4 border-t border-slate-50 text-[10px] font-semibold text-slate-500">
-              <div className="flex items-center"><span className="w-3.5 h-3.5 bg-green-100 border border-green-200 rounded-md mr-1.5" /> Present</div>
-              <div className="flex items-center"><span className="w-3.5 h-3.5 bg-yellow-100 border border-yellow-200 rounded-md mr-1.5" /> Leave</div>
-              <div className="flex items-center"><span className="w-3.5 h-3.5 bg-red-100 border border-red-200 rounded-md mr-1.5" /> Absent</div>
-              <div className="flex items-center"><span className="w-3.5 h-3.5 bg-slate-50 border border-slate-100 rounded-md mr-1.5" /> Unmarked</div>
-              
-              {user.attendancePct === 100 && (
-                <div className="ml-auto flex items-center text-brand-orange-600 bg-brand-orange-50 px-2.5 py-0.5 rounded-full font-bold">
-                  <Award className="h-3.5 w-3.5 mr-1" /> Perfect Attendance Candidate
+          {/* Centered Circular Avatar */}
+          <div className="flex justify-center mb-8">
+            <div className="w-36 h-36 rounded-full overflow-hidden border border-slate-200/80 shadow-sm bg-white flex items-center justify-center">
+              {user.photoUrl || user.photo ? (
+                <img 
+                  src={user.photoUrl || user.photo} 
+                  alt={fullName} 
+                  className="w-full h-full object-cover" 
+                />
+              ) : (
+                <div className="text-3xl font-bold text-brand-orange-500 uppercase">
+                  {user.firstName[0]}
+                  {user.lastName ? user.lastName[0] : ''}
                 </div>
               )}
             </div>
-          </Card>
+          </div>
 
-          {/* 3. Personal Attendance Trend Line Graph */}
-          {personalChartData.length > 0 ? (
-            <Card title="Attendance Development" subtitle="Individual historical performance score trends over past sessions">
-              <div className="h-56 mt-4">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={personalChartData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="colorPersonal" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.2}/>
-                        <stop offset="95%" stopColor="#3B82F6" stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
-                    <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#64748B' }} axisLine={false} tickLine={false} />
-                    <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: '#64748B' }} axisLine={false} tickLine={false} />
-                    <Tooltip />
-                    <Area type="monotone" dataKey="Rate" stroke="#3B82F6" fill="url(#colorPersonal)" strokeWidth={2.5} />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            </Card>
-          ) : null}
+          {/* Personal Metadata List with Horizontal Dividers */}
+          <div className="space-y-4 mb-8">
+            {/* DOB */}
+            <div className="flex justify-between items-center py-2.5 border-b border-[#F2ECE4]/60">
+              <span className="text-sm font-medium text-[#8C8276]">DOB</span>
+              <span className="text-sm font-semibold text-[#2C1F16]">{user.dob}</span>
+            </div>
+            
+            {/* Age */}
+            <div className="flex justify-between items-center py-2.5 border-b border-[#F2ECE4]/60">
+              <span className="text-sm font-medium text-[#8C8276]">Age</span>
+              <span className="text-sm font-semibold text-[#2C1F16]">{user.age}</span>
+            </div>
+            
+            {/* Mobile */}
+            <div className="flex justify-between items-center py-2.5 border-b border-[#F2ECE4]/60">
+              <span className="text-sm font-medium text-[#8C8276]">Mobile</span>
+              <span className="text-sm font-semibold text-[#2C1F16] tracking-wide">{user.mobile}</span>
+            </div>
+            
+            {/* Occupation */}
+            <div className="flex justify-between items-center py-2.5 border-b border-[#F2ECE4]/60">
+              <span className="text-sm font-medium text-[#8C8276]">Occupation</span>
+              <span className="text-sm font-semibold text-[#2C1F16]">{user.occupation}</span>
+            </div>
+            
+            {/* Address */}
+            <div className="flex justify-between items-center py-2.5 border-b border-[#F2ECE4]/60">
+              <span className="text-sm font-medium text-[#8C8276]">Address</span>
+              <span className="text-sm font-semibold text-[#2C1F16] text-right max-w-[280px] break-words">
+                {user.address || 'N/A'}
+              </span>
+            </div>
+          </div>
+
+          {/* Row of 4 Metrics Cards */}
+          <div className="grid grid-cols-4 gap-2.5 mb-8">
+            {/* Sabhas card */}
+            <div className="bg-[#FFF5EE] rounded-2xl py-3 px-1 text-center border border-[#FEEAD9]/40 flex flex-col justify-center shadow-xs">
+              <span className="text-xl font-bold text-[#2C1F16]">{total}</span>
+              <span className="text-[10px] font-bold text-[#8C8276] mt-1 uppercase tracking-wider block">Sabhas</span>
+            </div>
+
+            {/* Present card */}
+            <div className="bg-[#FFF5EE] rounded-2xl py-3 px-1 text-center border border-[#FEEAD9]/40 flex flex-col justify-center shadow-xs">
+              <span className="text-xl font-bold text-[#2C1F16]">{presents}</span>
+              <span className="text-[10px] font-bold text-[#8C8276] mt-1 uppercase tracking-wider block">Present</span>
+            </div>
+
+            {/* Absent card */}
+            <div className="bg-[#FFF5EE] rounded-2xl py-3 px-1 text-center border border-[#FEEAD9]/40 flex flex-col justify-center shadow-xs">
+              <span className="text-xl font-bold text-[#2C1F16]">{absents}</span>
+              <span className="text-[10px] font-bold text-[#8C8276] mt-1 uppercase tracking-wider block">Absent</span>
+            </div>
+
+            {/* Attendance Rate card */}
+            <div className="bg-[#FFF5EE] rounded-2xl py-3 px-1 text-center border border-[#FEEAD9]/40 flex flex-col justify-center shadow-xs">
+              <span className="text-xl font-bold text-[#2C1F16]">{user.attendancePct}%</span>
+              <span className="text-[10px] font-bold text-[#8C8276] mt-1 uppercase tracking-wider block">Rate</span>
+            </div>
+          </div>
+
+          {/* Stacked Monthly Attendance Bar Chart */}
+          <div className="h-56 w-full mt-6">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={monthlyData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
+                <XAxis 
+                  dataKey="monthName" 
+                  tick={{ fontSize: 11, fill: '#8C8276', fontWeight: 500 }} 
+                  axisLine={{ stroke: '#E5E0D8' }} 
+                  tickLine={{ stroke: '#E5E0D8' }} 
+                />
+                <YAxis 
+                  allowDecimals={false} 
+                  tick={{ fontSize: 11, fill: '#8C8276', fontWeight: 500 }} 
+                  axisLine={{ stroke: '#E5E0D8' }} 
+                  tickLine={{ stroke: '#E5E0D8' }} 
+                />
+                <Tooltip cursor={{ fill: 'transparent' }} />
+                <Bar dataKey="present" name="Present" stackId="a" fill="#10B981" barSize={32} />
+                <Bar dataKey="absent" name="Absent" stackId="a" fill="#F43F5E" radius={[4, 4, 0, 0]} barSize={32} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
 
         </div>
-
       </div>
-
     </DashboardLayout>
   );
 };

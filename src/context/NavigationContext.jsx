@@ -5,11 +5,8 @@ const NavigationContext = createContext(null);
 export const NavigationProvider = ({ children }) => {
   // Load state from localStorage on startup, defaulting to 'login' or 'dashboard' based on session presence
   const [currentPage, setCurrentPage] = useState(() => {
-    const savedSession = localStorage.getItem('smym_user_session');
-    if (!savedSession) return 'login';
-    
     const savedPage = localStorage.getItem('smym_current_page');
-    return savedPage && savedPage !== 'login' ? savedPage : 'dashboard';
+    return savedPage || 'login';
   });
 
   const [activeUserId, setActiveUserId] = useState(() => {

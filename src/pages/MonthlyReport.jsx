@@ -13,7 +13,8 @@ import {
   Printer, 
   ArrowUpDown,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  FileText
 } from 'lucide-react';
 import dayjs from 'dayjs';
 
@@ -21,67 +22,70 @@ export const MonthlyReport = () => {
   const { users, attendance } = useApp();
   const { navigateTo } = useNavigation();
 
-  // selectedMonthYear in "YYYY-MM" format, defaults to current month
-  const [selectedMonthYear, setSelectedMonthYear] = useState(() => dayjs().format('YYYY-MM'));
-  const [searchQuery, setSearchQuery] = useState('');
+  // Filters: Month Selector and Year Selector
+  const [selectedMonth, setSelectedMonth] = useState(() => dayjs().format('MM')); // '01'-'12'
+  const [selectedYear, setSelectedYear] = useState(() => dayjs().format('YYYY')); // '2026'
 
-  // Sorting
-  const [sortField, setSortField] = useState('name'); // 'name' | 'rate' | 'presents' | 'absents'
-  const [sortOrder, setSortOrder] = useState('asc'); // 'asc' | 'desc'
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortField, setSortField] = useState('name'); 
+  const [sortOrder, setSortOrder] = useState('asc'); 
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 8;
 
-  // Parsed date dimensions
-  const parsedDate = useMemo(() => {
-    const d = dayjs(selectedMonthYear);
-    return d.isValid() ? d : dayjs();
-  }, [selectedMonthYear]);
+  const monthsList = [
+    { value: '01', name: 'Jan' },
+    { value: '02', name: 'Feb' },
+    { value: '03', name: 'Mar' },
+    { value: '04', name: 'Apr' },
+    { value: '05', name: 'May' },
+    { value: '06', name: 'Jun' },
+    { value: '07', name: 'Jul' },
+    { value: '08', name: 'Aug' },
+    { value: '09', name: 'Sep' },
+    { value: '10', name: 'Oct' },
+    { value: '11', name: 'Nov' },
+    { value: '12', name: 'Dec' }
+  ];
 
-  const monthInt = useMemo(() => parsedDate.month(), [parsedDate]); // 0-11
-  const yearInt = useMemo(() => parsedDate.year(), [parsedDate]);
+  const yearsList = ['2026', '2025', '2024'];
 
-  // 1. Get dates in the selected month
+  // 1. Get dates in selected month and year
   const targetDates = useMemo(() => {
     return Object.keys(attendance).filter(date => {
       const d = dayjs(date);
-      return d.month() === monthInt && d.year() === yearInt;
+      return d.format('MM') === selectedMonth && d.format('YYYY') === selectedYear;
     });
-  }, [attendance, monthInt, yearInt]);
+  }, [attendance, selectedMonth, selectedYear]);
 
   // 2. Aggregate active Yuvaks statistics for the selected month
   const rosterData = useMemo(() => {
-    const activeUsers = users.filter(u => u.status === 'active');
-    
-    return activeUsers.map(user => {
+    return users.map(user => {
       let presentsCount = 0;
       let absentsCount = 0;
-      let leavesCount = 0;
 
       targetDates.forEach(date => {
         if (attendance[date] && attendance[date][user.id]) {
           const status = attendance[date][user.id];
-          if (status === 'present') presentsCount++;
-          else if (status === 'absent') absentsCount++;
-          else if (status === 'leave') leavesCount++;
+          if (status === 'Present') presentsCount++;
+          else if (status === 'Absent') absentsCount++;
         }
       });
 
-      const totalMarked = presentsCount + absentsCount + leavesCount;
+      const totalMarked = presentsCount + absentsCount;
       const rate = totalMarked > 0 
-        ? ((presentsCount + leavesCount) / totalMarked * 100).toFixed(2)
-        : "0.00";
+        ? Math.round((presentsCount / totalMarked) * 100)
+        : 0;
 
       return {
         id: user.id,
         name: user.name,
-        photo: user.photo,
+        photoUrl: user.photoUrl,
         presents: presentsCount,
         absents: absentsCount,
-        leaves: leavesCount,
         total: totalMarked,
-        rate: parseFloat(rate) // Keep as number for sorting
+        rate
       };
     });
   }, [users, targetDates, attendance]);
@@ -123,18 +127,16 @@ export const MonthlyReport = () => {
   const summary = useMemo(() => {
     let totalPresentsSum = 0;
     let totalAbsentsSum = 0;
-    let totalLeavesSum = 0;
 
     rosterData.forEach(row => {
       totalPresentsSum += row.presents;
       totalAbsentsSum += row.absents;
-      totalLeavesSum += row.leaves;
     });
 
-    const grandTotal = totalPresentsSum + totalAbsentsSum + totalLeavesSum;
+    const grandTotal = totalPresentsSum + totalAbsentsSum;
     const overallPct = grandTotal > 0
-      ? ((totalPresentsSum + totalLeavesSum) / grandTotal * 100).toFixed(2)
-      : "0.00";
+      ? Math.round((totalPresentsSum / grandTotal) * 100)
+      : 0;
 
     return {
       presents: totalPresentsSum,
@@ -153,101 +155,198 @@ export const MonthlyReport = () => {
     setCurrentPage(1);
   };
 
+  const handlePrint = () => {
+    window.print();
+  };
+
   const handleExportPDF = () => {
-    alert(`Generating PDF Print Report for ${parsedDate.format('MMMM, YYYY')}...`);
+    // PDF exports trigger the print layouts with custom alerts asking user to "Save as PDF"
+    alert("System instructions: The Print dialog will now load. In the Destination drop-down, select 'Save as PDF' to export the file.");
+    window.print();
   };
 
   const handleExportExcel = () => {
-    alert(`Downloading Excel spreadsheet report for ${parsedDate.format('MMMM, YYYY')}...`);
+    const headers = ['Yuvak Name', 'Present Count', 'Absent Count', 'Attendance Percentage'];
+    const rows = rosterData.map(r => [
+      r.name,
+      r.presents,
+      r.absents,
+      `${r.rate}%`
+    ]);
+
+    const csvContent = "\uFEFF" + [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    const activeMonth = monthsList.find(m => m.value === selectedMonth)?.name || 'Month';
+    link.download = `Sarvoday_Monthly_Attendance_Report_${activeMonth}_${selectedYear}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   return (
     <DashboardLayout title="Monthly Reports">
-      <p className="text-xs text-slate-500 -mt-3.5 mb-6">Generate monthly attendance reports</p>
+      
+      {/* Printable CSS definitions */}
+      <style dangerouslySetInnerHTML={{__html: `
+        @media print {
+          body {
+            background-color: white !important;
+            color: black !important;
+            font-size: 12pt !important;
+          }
+          aside, header, nav, button, input, select, .no-print {
+            display: none !important;
+          }
+          main {
+            padding: 0 !important;
+            margin: 0 !important;
+            max-width: 100% !important;
+          }
+          .print-full-width {
+            width: 100% !important;
+            border: none !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+          }
+          .print-card-grid {
+            display: grid !important;
+            grid-template-cols: 1fr 1fr 1fr 1fr !important;
+            gap: 15px !important;
+            margin-bottom: 20px !important;
+          }
+        }
+      `}} />
 
-      {/* Main Filter & Summary Block Container Card */}
-      <Card padded={false} className="p-5 md:p-6 mb-6 border border-slate-100 shadow-sm bg-white">
+      {/* 1. Page Header (mockup style) */}
+      <div className="mb-6 flex flex-col items-start no-print">
+        <div className="flex items-center space-x-3">
+          <div className="p-2 bg-orange-50 text-[#FF7A3C] rounded-xl">
+            <FileSpreadsheet className="h-6.5 w-6.5" />
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-bold text-[#2C1F16] font-serif tracking-tight">
+            Monthly Reports
+          </h1>
+        </div>
+        <p className="text-sm font-medium text-[#8C8276] mt-1 ml-0.5">
+          Detailed per-Yuvak attendance summary
+        </p>
+      </div>
+
+      <div className="print-full-width mb-6">
         
-        {/* Upper Selection & Action Row */}
-        <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center pb-5 border-b border-slate-50 mb-5">
+        {/* Dropdowns Row (Jun, 2026) - No Labels, Rounded style */}
+        <div className="flex items-center space-x-3 mb-4 no-print">
+          <select
+            value={selectedMonth}
+            onChange={(e) => { setSelectedMonth(e.target.value); setCurrentPage(1); }}
+            className="text-xs font-bold text-slate-755 bg-white border border-slate-200 rounded-2xl px-4 py-2.5 focus:outline-none cursor-pointer shadow-[0_2px_4px_rgba(0,0,0,0.02)] min-w-[90px]"
+          >
+            {monthsList.map(m => (
+              <option key={m.value} value={m.value}>{m.name}</option>
+            ))}
+          </select>
           
-          {/* Calendar Selector */}
-          <div className="w-full sm:w-auto">
-            <label className="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wider">
-              Report month
-            </label>
-            <div className="flex items-center space-x-2.5 bg-slate-50 border border-slate-200 px-3.5 py-2 rounded-xl focus-within:ring-2 focus-within:ring-brand-orange-300">
-              <Calendar className="h-4.5 w-4.5 text-brand-orange-500 flex-shrink-0" />
-              <input
-                type="month"
-                value={selectedMonthYear}
-                onChange={(e) => {
-                  setSelectedMonthYear(e.target.value);
-                  setCurrentPage(1);
-                }}
-                className="bg-transparent border-none text-xs font-bold text-slate-700 focus:outline-none w-full cursor-pointer"
-              />
-            </div>
-          </div>
-
-          {/* Export Action Buttons */}
-          <div className="flex items-center space-x-2.5 w-full sm:w-auto justify-end">
-            <button
-              onClick={handleExportPDF}
-              className="inline-flex items-center px-4 py-2 text-xs font-bold text-slate-700 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 shadow-xs cursor-pointer active:scale-95 transition-all"
-            >
-              <Printer className="h-4 w-4 mr-2 text-slate-500" /> Export PDF (Print)
-            </button>
-            <button
-              onClick={handleExportExcel}
-              className="inline-flex items-center px-4 py-2 text-xs font-bold text-slate-700 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 shadow-xs cursor-pointer active:scale-95 transition-all"
-            >
-              <FileSpreadsheet className="h-4 w-4 mr-2 text-slate-500" /> Export All Excel
-            </button>
-          </div>
-
+          <select
+            value={selectedYear}
+            onChange={(e) => { setSelectedYear(e.target.value); setCurrentPage(1); }}
+            className="text-xs font-bold text-slate-755 bg-white border border-slate-200 rounded-2xl px-4 py-2.5 focus:outline-none cursor-pointer shadow-[0_2px_4px_rgba(0,0,0,0.02)] min-w-[90px]"
+          >
+            {yearsList.map(y => (
+              <option key={y} value={y}>{y}</option>
+            ))}
+          </select>
         </div>
 
-        {/* Lower Summary Box Grid (3 Boxes inside Card) */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Buttons Row - Wrapping layout, matching exact labels and order */}
+        <div className="flex flex-wrap gap-2.5 mb-6 no-print w-full">
+          <button
+            onClick={handleExportPDF}
+            className="inline-flex items-center justify-center px-4 py-2.5 text-xs font-bold text-slate-750 bg-white border border-slate-200 rounded-2xl hover:bg-slate-50 shadow-xs cursor-pointer active:scale-95 transition-all"
+          >
+            <FileText className="h-4 w-4 mr-2 text-slate-500" /> Export PDF
+          </button>
           
-          {/* Total Present Summary */}
-          <div className="bg-slate-50/50 p-4 rounded-xl border border-slate-100">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Present</span>
-            <span className="text-2xl font-extrabold text-slate-800 mt-1 block">
+          <button
+            onClick={handleExportExcel}
+            className="inline-flex items-center justify-center px-4 py-2.5 text-xs font-bold text-slate-750 bg-white border border-slate-200 rounded-2xl hover:bg-slate-50 shadow-xs cursor-pointer active:scale-95 transition-all"
+          >
+            <FileSpreadsheet className="h-4 w-4 mr-2 text-slate-500" /> Export Excel
+          </button>
+
+          <button
+            onClick={handlePrint}
+            className="inline-flex items-center justify-center px-4 py-2.5 text-xs font-bold text-slate-750 bg-white border border-slate-200 rounded-2xl hover:bg-slate-50 shadow-xs cursor-pointer active:scale-95 transition-all"
+          >
+            <Printer className="h-4 w-4 mr-2 text-slate-500" /> Print
+          </button>
+        </div>
+
+        {/* Print Title (Only visible in Print) */}
+        <div className="hidden print:flex flex-col items-center mb-6 border-b pb-4 text-center">
+          <div className="h-16 w-16 rounded-full overflow-hidden border border-slate-200 shadow-sm mb-2 flex items-center justify-center bg-white">
+            <img 
+              src="/logo.png" 
+              alt="Logo" 
+              className="h-full w-full object-cover scale-[1.12]" 
+            />
+          </div>
+          <h2 className="text-xl font-bold text-slate-800">Sarvoday Nagar Yuvak Mandal</h2>
+          <h3 className="text-sm font-semibold text-slate-500 mt-1">
+            Monthly Attendance Report — {monthsList.find(m => m.value === selectedMonth)?.name} {selectedYear}
+          </h3>
+        </div>
+
+        {/* Monthly Summary Cards (4 boxes matching mockup) */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6 print-card-grid">
+          
+          {/* Sabhas Held */}
+          <div className="bg-[#FFF9F6] p-4.5 rounded-[24px] border border-[#FDE3D3] shadow-xs">
+            <span className="text-[10px] font-bold text-[#C2410C] uppercase tracking-wider block">SABHAS HELD</span>
+            <span className="text-3xl font-extrabold text-[#C2410C] font-serif mt-2 block">
+              {targetDates.length}
+            </span>
+          </div>
+
+          {/* Total Present */}
+          <div className="bg-[#F0FDF4] p-4.5 rounded-[24px] border border-[#DCFCE7] shadow-xs">
+            <span className="text-[10px] font-bold text-[#047857] uppercase tracking-wider block">TOTAL PRESENT</span>
+            <span className="text-3xl font-extrabold text-[#047857] font-serif mt-2 block">
               {summary.presents}
             </span>
           </div>
 
-          {/* Total Absent Summary */}
-          <div className="bg-slate-50/50 p-4 rounded-xl border border-slate-100">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Absent</span>
-            <span className="text-2xl font-extrabold text-slate-800 mt-1 block">
+          {/* Total Absent */}
+          <div className="bg-[#FFF1F2] p-4.5 rounded-[24px] border border-[#FFE4E6] shadow-xs">
+            <span className="text-[10px] font-bold text-[#BE123C] uppercase tracking-wider block">TOTAL ABSENT</span>
+            <span className="text-3xl font-extrabold text-[#BE123C] font-serif mt-2 block">
               {summary.absents}
             </span>
           </div>
 
           {/* Overall Attendance Percentage */}
-          <div className="bg-slate-50/50 p-4 rounded-xl border border-slate-100">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Overall Attendance</span>
-            <span className="text-2xl font-extrabold text-slate-800 mt-1 block">
+          <div className="bg-[#FFFBEB] p-4.5 rounded-[24px] border border-[#FEF3C7] shadow-xs">
+            <span className="text-[10px] font-bold text-[#B45309] uppercase tracking-wider block">OVERALL %</span>
+            <span className="text-3xl font-extrabold text-[#B45309] font-serif mt-2 block">
               {summary.rate}%
             </span>
           </div>
 
         </div>
 
-      </Card>
+      </div>
 
-      {/* Roster Table Card below */}
-      <Card padded={false} className="overflow-hidden border border-slate-100 shadow-sm bg-white">
+      {/* Detailed Yuvak Report */}
+      <Card padded={false} className="overflow-hidden border border-slate-100 shadow-sm bg-white print-full-width">
         
-        {/* Table Header with Search Bar */}
-        <div className="px-6 py-4.5 border-b border-slate-100 bg-slate-50/20 flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
+        {/* Table Header with Search */}
+        <div className="px-6 py-4.5 border-b border-slate-100 bg-[#FAF9F6]/20 flex flex-col md:flex-row gap-4 justify-between items-start md:items-center no-print">
           <div>
-            <h3 className="text-sm font-bold text-slate-700">Roster Attendance Log</h3>
+            <h3 className="text-sm font-bold text-slate-700">Detailed Yuvak Report</h3>
             <p className="text-[10px] text-slate-400 mt-0.5">
-              Active users roster for {parsedDate.format('MMMM, YYYY')}
+              Individual stats for {monthsList.find(m => m.value === selectedMonth)?.name} {selectedYear}
             </p>
           </div>
           <div className="w-full md:w-64">
@@ -265,14 +364,14 @@ export const MonthlyReport = () => {
           </div>
         </div>
 
-        {/* Responsive Table */}
+        {/* Report Table */}
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-slate-150">
-            <thead className="bg-slate-50/50">
+            <thead className="bg-[#FAF9F6]">
               <tr>
                 <th 
                   onClick={() => handleSort('name')}
-                  className="px-6 py-3.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100/70 transition-colors"
+                  className="px-6 py-3.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors"
                 >
                   <span className="flex items-center">
                     Yuvak Name
@@ -280,29 +379,29 @@ export const MonthlyReport = () => {
                   </span>
                 </th>
                 <th 
-                  onClick={() => handleSort('rate')}
-                  className="px-6 py-3.5 text-center text-[10px] font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100/70 transition-colors"
-                >
-                  <span className="flex items-center justify-center">
-                    Attendance %
-                    <ArrowUpDown className="h-3 w-3 ml-1 text-slate-400" />
-                  </span>
-                </th>
-                <th 
                   onClick={() => handleSort('presents')}
-                  className="px-6 py-3.5 text-center text-[10px] font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100/70 transition-colors"
+                  className="px-6 py-3.5 text-center text-[10px] font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors"
                 >
                   <span className="flex items-center justify-center">
-                    Present
+                    Present Count
                     <ArrowUpDown className="h-3 w-3 ml-1 text-slate-400" />
                   </span>
                 </th>
                 <th 
                   onClick={() => handleSort('absents')}
-                  className="px-6 py-3.5 text-center text-[10px] font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100/70 transition-colors"
+                  className="px-6 py-3.5 text-center text-[10px] font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors"
                 >
                   <span className="flex items-center justify-center">
-                    Absent
+                    Absent Count
+                    <ArrowUpDown className="h-3 w-3 ml-1 text-slate-400" />
+                  </span>
+                </th>
+                <th 
+                  onClick={() => handleSort('rate')}
+                  className="px-6 py-3.5 text-center text-[10px] font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors"
+                >
+                  <span className="flex items-center justify-center">
+                    Attendance Percentage
                     <ArrowUpDown className="h-3 w-3 ml-1 text-slate-400" />
                   </span>
                 </th>
@@ -313,27 +412,41 @@ export const MonthlyReport = () => {
                 paginatedData.map((row) => (
                   <tr key={row.id} className="hover:bg-slate-50/20 transition-colors">
                     
-                    {/* Student Name */}
+                    {/* Yuvak details */}
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center space-x-3.5">
-                        <Avatar src={row.photo} name={row.name} size="sm" />
+                        <Avatar src={row.photoUrl} name={row.name} size="sm" className="no-print" />
                         <span className="text-xs font-bold text-slate-800">{row.name}</span>
                       </div>
                     </td>
 
-                    {/* Attendance % */}
-                    <td className="px-6 py-4 whitespace-nowrap text-center text-xs font-semibold text-slate-700">
-                      {row.rate.toFixed(0)}%
-                    </td>
-
                     {/* Present */}
-                    <td className="px-6 py-4 whitespace-nowrap text-center text-xs font-bold text-green-600">
-                      {row.presents}
+                    <td className="px-6 py-4 whitespace-nowrap text-center text-xs font-bold text-emerald-600">
+                      {row.presents} sabhas
                     </td>
 
                     {/* Absent */}
                     <td className="px-6 py-4 whitespace-nowrap text-center text-xs font-bold text-red-500">
-                      {row.absents}
+                      {row.absents} sabhas
+                    </td>
+
+                    {/* Attendance percentage with progress bars */}
+                    <td className="px-6 py-4 whitespace-nowrap text-center">
+                      <div className="flex items-center justify-center space-x-3 max-w-[200px] mx-auto">
+                        <span className={`text-xs font-black w-10 text-right ${
+                          row.rate >= 75 ? 'text-emerald-600' : 'text-red-500'
+                        }`}>
+                          {row.rate}%
+                        </span>
+                        <div className="w-24 h-2 bg-slate-100 rounded-full overflow-hidden flex-shrink-0">
+                          <div 
+                            className={`h-full rounded-full ${
+                              row.rate >= 75 ? 'bg-emerald-500' : 'bg-red-500'
+                            }`}
+                            style={{ width: `${row.rate}%` }}
+                          />
+                        </div>
+                      </div>
                     </td>
 
                   </tr>
@@ -341,7 +454,7 @@ export const MonthlyReport = () => {
               ) : (
                 <tr>
                   <td colSpan={4} className="px-6 py-12 text-center text-xs text-slate-400 font-semibold uppercase">
-                    No active Yuvaks found in roster
+                    No yuvak roster metrics for this month
                   </td>
                 </tr>
               )}
@@ -349,8 +462,8 @@ export const MonthlyReport = () => {
           </table>
         </div>
 
-        {/* Footer Pagination */}
-        <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 bg-slate-50/30">
+        {/* Roster Pagination (hidden in print) */}
+        <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 bg-[#FAF9F6]/20 no-print">
           <span className="text-xs text-slate-500 font-medium">
             Showing <b className="text-slate-800">{sortedData.length > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0}</b> to{' '}
             <b className="text-slate-800">{Math.min(currentPage * itemsPerPage, sortedData.length)}</b> of{' '}
@@ -365,7 +478,7 @@ export const MonthlyReport = () => {
             >
               <ChevronLeft className="h-4.5 w-4.5" />
             </button>
-            <span className="text-xs font-semibold text-slate-600 px-3 py-1 bg-white border border-slate-200 rounded-lg">
+            <span className="text-xs font-bold text-slate-600 px-3 py-1 bg-white border border-slate-200 rounded-lg">
               Page {currentPage} of {totalPages}
             </span>
             <button
