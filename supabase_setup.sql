@@ -45,8 +45,66 @@ CREATE TABLE IF NOT EXISTS activities (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 5. Row-Level Security: Disable RLS for ease of integration in this setup
-ALTER TABLE users DISABLE ROW LEVEL SECURITY;
-ALTER TABLE yuvaks DISABLE ROW LEVEL SECURITY;
-ALTER TABLE attendance DISABLE ROW LEVEL SECURITY;
-ALTER TABLE activities DISABLE ROW LEVEL SECURITY;
+-- 5. Row-Level Security (RLS) Setup
+-- Choose ONE of the options below:
+
+-- =========================================================================
+-- OPTION A: Enable RLS and define secure policies (Recommended for Production)
+-- =========================================================================
+
+-- Enable RLS on all tables
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE yuvaks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE attendance ENABLE ROW LEVEL SECURITY;
+ALTER TABLE activities ENABLE ROW LEVEL SECURITY;
+
+-- Policies for "users" table (linked to Auth)
+-- 1. Allow users to insert their own profile during registration/signup
+CREATE POLICY "Allow insert for self registration" ON users 
+    FOR INSERT 
+    WITH CHECK (auth.uid() = id);
+
+-- 2. Allow authenticated users to view profiles
+CREATE POLICY "Allow select for authenticated users" ON users 
+    FOR SELECT 
+    TO authenticated 
+    USING (true);
+
+-- 3. Allow users to update their own profile
+CREATE POLICY "Allow update for self" ON users 
+    FOR UPDATE 
+    USING (auth.uid() = id);
+
+-- Policies for "yuvaks" table
+-- Allow authenticated coordinators to perform all operations
+CREATE POLICY "Allow all actions on yuvaks for coordinators" ON yuvaks 
+    FOR ALL 
+    TO authenticated 
+    USING (true) 
+    WITH CHECK (true);
+
+-- Policies for "attendance" table
+-- Allow authenticated coordinators to mark and read attendance
+CREATE POLICY "Allow all actions on attendance for coordinators" ON attendance 
+    FOR ALL 
+    TO authenticated 
+    USING (true) 
+    WITH CHECK (true);
+
+-- Policies for "activities" table
+-- Allow authenticated users to insert and view activities
+CREATE POLICY "Allow all actions on activities for coordinators" ON activities 
+    FOR ALL 
+    TO authenticated 
+    USING (true) 
+    WITH CHECK (true);
+
+
+-- =========================================================================
+-- OPTION B: Disable RLS entirely (Easier for local development/testing)
+-- =========================================================================
+-- ALTER TABLE users DISABLE ROW LEVEL SECURITY;
+-- ALTER TABLE yuvaks DISABLE ROW LEVEL SECURITY;
+-- ALTER TABLE attendance DISABLE ROW LEVEL SECURITY;
+-- ALTER TABLE activities DISABLE ROW LEVEL SECURITY;
+
