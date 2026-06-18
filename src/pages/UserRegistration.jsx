@@ -8,6 +8,36 @@ import Modal from '../components/Modal';
 import { Upload, X, ArrowLeft, CheckCircle, Camera, UserPlus } from 'lucide-react';
 import dayjs from 'dayjs';
 
+const getOccupationLabelAndPlaceholder = (occ) => {
+  switch (occ) {
+    case 'Student':
+      return {
+        label: 'Which standard is he studying? *',
+        placeholder: 'e.g. 10th Standard, B.Tech 2nd Year',
+        requiredMsg: 'Standard is required'
+      };
+    case 'Job':
+      return {
+        label: 'Which job does he do? *',
+        placeholder: 'e.g. Software Engineer, Sales Manager',
+        requiredMsg: 'Job description is required'
+      };
+    case 'Business':
+      return {
+        label: 'Which business does he do? *',
+        placeholder: 'e.g. Grocery Store, Textile Manufacturing',
+        requiredMsg: 'Business description is required'
+      };
+    case 'Other':
+    default:
+      return {
+        label: 'What does he do? *',
+        placeholder: 'e.g. Preparing for Exams, Job Seeking',
+        requiredMsg: 'Details are required'
+      };
+  }
+};
+
 export const UserRegistration = () => {
   const { addUser } = useApp();
   const { navigateTo } = useNavigation();
@@ -30,12 +60,14 @@ export const UserRegistration = () => {
       age: 0,
       mobile: '',
       occupation: 'Student',
+      occupationSpec: '',
       address: ''
     }
   });
 
-  // Watch date of birth to dynamically calculate age
+  // Watch date of birth and occupation to dynamically calculate age and render form fields
   const dobValue = watch('dob');
+  const occupationValue = watch('occupation');
   const [calculatedAge, setCalculatedAge] = useState(0);
 
   useEffect(() => {
@@ -410,6 +442,30 @@ export const UserRegistration = () => {
                 </div>
               </div>
             </div>
+
+            {/* Occupation Specific Details */}
+            {occupationValue && (
+              <div className="md:col-span-3 w-full transition-all duration-200">
+                <label className="block text-sm font-medium text-[#2C1F16] mb-1.5">
+                  {getOccupationLabelAndPlaceholder(occupationValue).label}
+                </label>
+                <input
+                  type="text"
+                  placeholder={getOccupationLabelAndPlaceholder(occupationValue).placeholder}
+                  className={`w-full px-4.5 py-2.5 rounded-2xl border bg-white text-sm text-[#2C1F16] placeholder-[#B0A89E] transition-all duration-200 outline-none
+                    ${errors.occupationSpec ? 'border-red-400 focus:border-red-500' : 'border-[#E5E0D8] focus:border-[#FF7A3C] focus:ring-1 focus:ring-[#FF7A3C]'}
+                  `}
+                  {...register('occupationSpec', { 
+                    required: getOccupationLabelAndPlaceholder(occupationValue).requiredMsg 
+                  })}
+                />
+                {errors.occupationSpec && (
+                  <span className="text-xs text-red-500 mt-1 block">
+                    {errors.occupationSpec.message}
+                  </span>
+                )}
+              </div>
+            )}
 
             {/* Home Address */}
             <div className="md:col-span-3 w-full">

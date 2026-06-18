@@ -53,6 +53,7 @@ export const AppProvider = ({ children }) => {
             age: y.age || 0,
             mobile: y.mobile || '',
             occupation: y.occupation || 'Other',
+            occupationSpec: y.occupation_spec || '',
             address: y.address || '',
             createdAt: y.created_at
           };
@@ -347,6 +348,7 @@ export const AppProvider = ({ children }) => {
       age: parseInt(userData.age) || 0,
       mobile: userData.mobile,
       occupation: userData.occupation || 'Other',
+      occupationSpec: userData.occupationSpec || '',
       address: userData.address || '',
       createdAt: dayjs().toISOString(),
       attendancePct: 100
@@ -375,6 +377,7 @@ export const AppProvider = ({ children }) => {
             age: parseInt(userData.age) || 0,
             mobile: userData.mobile,
             occupation: userData.occupation,
+            occupation_spec: userData.occupationSpec || '',
             address: userData.address,
             photo_url: uploadedUrl || finalPhotoUrl
           })
@@ -396,6 +399,7 @@ export const AppProvider = ({ children }) => {
           age: data.age,
           mobile: data.mobile,
           occupation: data.occupation,
+          occupationSpec: data.occupation_spec || '',
           address: data.address,
           createdAt: data.created_at,
           attendancePct: 100
@@ -440,6 +444,7 @@ export const AppProvider = ({ children }) => {
             age: parseInt(updatedUser.age) || 0,
             mobile: updatedUser.mobile,
             occupation: updatedUser.occupation,
+            occupation_spec: updatedUser.occupationSpec || '',
             address: updatedUser.address,
             photo_url: finalPhotoUrl
           })

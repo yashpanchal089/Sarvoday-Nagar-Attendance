@@ -153,6 +153,20 @@ export const UserProfile = () => {
               <span className="text-sm font-semibold text-[#2C1F16]">{user.occupation}</span>
             </div>
             
+            {/* Occupation Details */}
+            {user.occupationSpec && (
+              <div className="flex justify-between items-center py-2.5 border-b border-[#F2ECE4]/60">
+                <span className="text-sm font-medium text-[#8C8276]">
+                  {user.occupation === 'Student' ? 'Standard Studying' :
+                   user.occupation === 'Job' ? 'Job Title' :
+                   user.occupation === 'Business' ? 'Business Type' : 'Details'}
+                </span>
+                <span className="text-sm font-semibold text-[#2C1F16] text-right max-w-[280px] break-words">
+                  {user.occupationSpec}
+                </span>
+              </div>
+            )}
+            
             {/* Address */}
             <div className="flex justify-between items-center py-2.5 border-b border-[#F2ECE4]/60">
               <span className="text-sm font-medium text-[#8C8276]">Address</span>

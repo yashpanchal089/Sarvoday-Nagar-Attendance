@@ -10,6 +10,9 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- MIGRATION NOTE: If your 'yuvaks' table already exists, execute this query in your Supabase SQL Editor:
+-- ALTER TABLE yuvaks ADD COLUMN IF NOT EXISTS occupation_spec TEXT;
+
 -- 2. Create yuvaks (youth members) table
 CREATE TABLE IF NOT EXISTS yuvaks (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -21,6 +24,7 @@ CREATE TABLE IF NOT EXISTS yuvaks (
     age INTEGER,
     mobile TEXT NOT NULL,
     occupation TEXT CHECK (occupation IN ('Student', 'Job', 'Business', 'Other')),
+    occupation_spec TEXT,
     address TEXT NOT NULL,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );

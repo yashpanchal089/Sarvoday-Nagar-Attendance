@@ -21,6 +21,36 @@ import {
 } from 'lucide-react';
 import dayjs from 'dayjs';
 
+const getOccupationLabelAndPlaceholder = (occ) => {
+  switch (occ) {
+    case 'Student':
+      return {
+        label: 'Which standard is he studying? *',
+        placeholder: 'e.g. 10th Standard, B.Tech 2nd Year',
+        requiredMsg: 'Standard is required'
+      };
+    case 'Job':
+      return {
+        label: 'Which job does he do? *',
+        placeholder: 'e.g. Software Engineer, Sales Manager',
+        requiredMsg: 'Job description is required'
+      };
+    case 'Business':
+      return {
+        label: 'Which business does he do? *',
+        placeholder: 'e.g. Grocery Store, Textile Manufacturing',
+        requiredMsg: 'Business description is required'
+      };
+    case 'Other':
+    default:
+      return {
+        label: 'What does he do? *',
+        placeholder: 'e.g. Preparing for Exams, Job Seeking',
+        requiredMsg: 'Details are required'
+      };
+  }
+};
+
 export const UserList = () => {
   const { users, deleteUser, updateUser } = useApp();
   const { navigateTo } = useNavigation();
@@ -46,8 +76,9 @@ export const UserList = () => {
   // Edit form register
   const { register, handleSubmit, setValue, reset, watch, formState: { errors } } = useForm();
 
-  // Age watcher for edit form
+  // Age and occupation watchers for edit form
   const dobWatch = watch('dob');
+  const editOccupationValue = watch('occupation');
   const [calculatedEditAge, setCalculatedEditAge] = useState(0);
 
   React.useEffect(() => {
@@ -106,6 +137,7 @@ export const UserList = () => {
       dob: user.dob,
       age: user.age,
       occupation: user.occupation,
+      occupationSpec: user.occupationSpec || '',
       address: user.address,
     });
   };
@@ -148,7 +180,7 @@ export const UserList = () => {
 
   // CSV Excel Export
   const handleExportToExcel = () => {
-    const headers = ['First Name', 'Middle Name', 'Last Name', 'Mobile Number', 'Date of Birth', 'Age', 'Occupation', 'Home Address', 'Attendance %'];
+    const headers = ['First Name', 'Middle Name', 'Last Name', 'Mobile Number', 'Date of Birth', 'Age', 'Occupation', 'Occupation Details', 'Home Address', 'Attendance %'];
     const rows = users.map(u => [
       u.firstName,
       u.middleName || '',
@@ -157,6 +189,7 @@ export const UserList = () => {
       u.dob,
       u.age,
       u.occupation,
+      `"${(u.occupationSpec || '').replace(/"/g, '""')}"`,
       `"${u.address.replace(/"/g, '""')}"`,
       `${u.attendancePct}%`
     ]);
@@ -267,6 +300,7 @@ export const UserList = () => {
                 <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Age</th>
                 <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Mobile</th>
                 <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Occupation</th>
+                <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">What He Does</th>
                 <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Attendance %</th>
                 <th className="px-6 py-4 text-right text-[10px] font-bold text-slate-500 uppercase tracking-wider pr-8">Actions</th>
               </tr>
@@ -288,6 +322,9 @@ export const UserList = () => {
                       <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
                         {user.occupation}
                       </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-xs text-slate-600 font-semibold max-w-[160px] truncate" title={user.occupationSpec || 'N/A'}>
+                      {user.occupationSpec || '—'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
@@ -337,7 +374,7 @@ export const UserList = () => {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-xs text-slate-400 font-semibold uppercase tracking-wider">
+                  <td colSpan={8} className="px-6 py-12 text-center text-xs text-slate-400 font-semibold uppercase tracking-wider">
                     No yuvaks match your query
                   </td>
                 </tr>
@@ -508,6 +545,28 @@ export const UserList = () => {
               <option value="Other">Other</option>
             </select>
           </div>
+          {editOccupationValue && (
+            <div>
+              <label className="block text-xs font-bold text-slate-605 mb-1.5 uppercase tracking-wider">
+                {getOccupationLabelAndPlaceholder(editOccupationValue).label}
+              </label>
+              <input
+                type="text"
+                placeholder={getOccupationLabelAndPlaceholder(editOccupationValue).placeholder}
+                className={`w-full h-10.5 text-sm rounded-xl border bg-white px-3.5 focus:outline-none focus:ring-2 focus:ring-brand-orange-300
+                  ${errors.occupationSpec ? 'border-red-400 focus:border-red-500' : 'border-slate-200'}
+                `}
+                {...register('occupationSpec', { 
+                  required: getOccupationLabelAndPlaceholder(editOccupationValue).requiredMsg 
+                })}
+              />
+              {errors.occupationSpec && (
+                <span className="text-[10px] text-red-500 mt-1 block">
+                  {errors.occupationSpec.message}
+                </span>
+              )}
+            </div>
+          )}
           <div className="sm:col-span-2">
             <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wider">Home Address (Optional)</label>
             <textarea

@@ -100,7 +100,7 @@ export const AttendanceHistory = () => {
   const handleExportCSV = () => {
     if (!selectedDate || !attendance[selectedDate]) return;
     const records = attendance[selectedDate];
-    const headers = ['Yuvak Name', 'Mobile Number', 'Occupation', 'Attendance Status'];
+    const headers = ['Yuvak Name', 'Mobile Number', 'Occupation', 'Occupation Details', 'Attendance Status'];
     const rows = users.map(user => {
       const status = records[user.id] || 'Absent';
       const fullName = [user.firstName, user.middleName, user.lastName].filter(Boolean).join(' ');
@@ -108,6 +108,7 @@ export const AttendanceHistory = () => {
         fullName,
         user.mobile,
         user.occupation,
+        `"${(user.occupationSpec || '').replace(/"/g, '""')}"`,
         status
       ];
     });
@@ -250,6 +251,11 @@ export const AttendanceHistory = () => {
                               <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-50 text-slate-500 border border-slate-150">
                                 {row.occupation}
                               </span>
+                              {row.occupationSpec && (
+                                <div className="text-[9px] text-slate-400 font-semibold mt-1 max-w-[120px] truncate" title={row.occupationSpec}>
+                                  {row.occupationSpec}
+                                </div>
+                              )}
                             </td>
                             <td className="px-6 py-3.5 whitespace-nowrap text-right pr-8">
                               <Badge variant={row.status === 'Present' ? 'success' : 'danger'}>
